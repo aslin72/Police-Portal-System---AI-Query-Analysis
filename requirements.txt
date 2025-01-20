@@ -1,0 +1,14 @@
+streamlit
+streamlit_chat
+langchain
+langchain_openai
+pandas
+langchain_experimental
+openai
+tabulate
+python-dotenv==1.0.1
+geocoder
+huggingface_hub
+tensorflow 
+transformers
+streamlit_folium

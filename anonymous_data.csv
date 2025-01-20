@@ -1,0 +1,64 @@
+,,my daughter is in trouble.,women help desk,"""User Location"" (18.5196, 73.8554)","""my daughter is in trouble"""
+,,my daughter is in trouble.,Women help desk,"The user location is provided, but it doesn't seem relevant to the query as it's focused on the user's daughter being in trouble.",daughter in trouble.
+,,my daughter is in trouble.,Women help desk,aryan,dasgd,gfhfg,fghfgh,hfghf
+,,my account got hacked toaday.,Cyber crime incident,Not provided,Account hacked.
+,,my account got hacked toaday.,Cyber crime incident,sadsa,tyrtyrt,sadasd,sadsdas,dasdasdas
+,,my daughter is in trouble.,Women help desk,Not provided by the user,Daughter in trouble.
+,,my daughter is in trouble.,Women help desk,Daughter's location (to be determined),Daughter in trouble.
+,,i got hit by car today.,Road accident,"18.5196, 73.8554",The user was involved in a road accident. No other details were provided in the query.
+,,i got involve in car accident.,Road accident,"The user query does not provide any specific location details. The user location provided with the query is in the format of latitude and longitude, which cannot be directly used to identify a specific location.",The user has mentioned that they have been involved in a car accident. No other details about the incident have been provided in the query.
+,,i got involve in car accident.,Road accident,sadasd,sadasd,sadasd,sdasd,asdsad
+,,my card is blocked seems suspicious.,Cyber crime incident,Unknown,"User's credit card is blocked, possibly due to fraudulent activity."
+,,my card is blocked seems suspicious.,Cyber crime incident,,,,,,
+,,my card is blocked looks suspicious.,Cyber crime incident,noida,sadas,gdfg,dfgdfg,,
+,,my card is blocked .,Cyber crime incident,derw,werwer,werwer,ewrewr,,
+,,i am in trouble.,issue recorded,"(20, 78)",
+,,i am in trouble.,issue recorded,asfasf,gjghj,gfhfg,ghjgh
+,,my card got blocked ,Cyber crime incident,Not provided in the query,"User reported that their card got blocked, which is indicative of a cyber crime incident. This could be a case of credit card fraud or unauthorized access to an account. The user should be advised to contact their bank or financial institution immediately to report the incident and take steps to secure their account. The bank should be contacted using the official phone number or online reporting system to ensure the authenticity of the report. The user should also monitor their account for any unusual activity and consider placing a fraud alert on their account. Additionally, the user should be advised to change their passwords and enable two-factor authentication on their accounts if they have not already done so. It is also recommended that the user check their credit report for any unauthorized activity. If the user suspects that their personal information has been compromised, they should consider contacting a credit monitoring service."
+,,my card got blocked ,Cyber crime incident,,werwer,werwer,ewrewr,,
+,,"my card is blocked , seems suspicious.",Cyber crime incident,rthrt,dsfsd,dsfsdfsdsdfsd,dsfsdf,dsfsdf,sdfsdf
+,,"my card is blocked, seems suspicious.",Cyber crime incident,dsfsd,dsadsa,sadasd,sdsdfsd,,
+,,"my card is blocked, seems suspicious.",Cyber crime incident,Unknown,"User's credit card has been blocked, possibly due to fraudulent activity."
+prateek ,92439324234,my daughter is in trouble.,women help desk,Unknown (could be residential or public location),Daughter in trouble.
+,,my daughter is in trouble.,Women help desk,"Home or nearby area, depending on the context of the user query.","Daughter in trouble, no other specific details provided."
+,,i got car accident today.,,,
+,,i murder someone.,,,
+,,i need help for my daughter.,Women help desk,None,The user is seeking help for their daughter.
+,,i need help for my daughter.,Women help desk,None,The user is seeking help for their daughter.
+,,i am not feeling well today.,Public healthcare,User's current location (if mentioned) or assume user's home address.,User's health condition.
+,,i am not feeling well today.,Public healthcare,saddddddddddddddddsad,sadss,,,
+,,"i am not feeling well today. and tommorrow
+
+",Public healthcare,The user did not provide a specific location. Please ask for more details.,"The user is not feeling well and mentioned tomorrow. This could be a medical concern. The user may require assistance from a healthcare professional. Please advise the user to contact their doctor or visit a hospital if the situation worsens. If the user is in immediate danger or experiencing a severe medical emergency, they should call emergency services without delay."
+,,"i am not feeling well today. and tommorrow
+sadasda
+
+
+",Public healthcare,Not provided,"User is not feeling well and is seeking help, implying a request for healthcare services."
+,,i am in trouble needs medicines.,Public healthcare,User's current location is not mentioned in the query. It is important to contact the user to get their location details for providing appropriate assistance.,User is in need of medicines.
+,,my daughter is in trouble.,women help desk,home or specific address if mentioned,daughter in trouble.
+,,i got involved in car accident today.,Road accident,Not specified in the query,User was involved in a car accident on today's date.
+,,i got involved in car accident today.,Road accident,yes,sdas,sadda,asdas,sdasd
+,,i got involved in car accident today.,Road accident,Not specified in the query,User was involved in a car accident on today's date.
+,,i feel down from strais need ambulance.,Public healthcare,,
+,,i feel down from strais need ambulance.,Public healthcare,fsdf,fsdf,yutyu,fhghfg,fdgdfg
+,,my card got blocked today seems suspicious.,Cyber crime incident,,
+,,my card got blocked today seems suspicious.,Cyber crime incident,ssas,dsfsd,fdgfd,hfhfg,fghfg,dsfdsf
+,,i got into an accident today.,Road accident,,
+,,"my friend is sick , needs help.",Women help desk,,
+,,"my friend is sick , needs help from hospital.",Public healthcare,,
+,,"my friend is sick , needs help from hospital.",Public healthcare,,,,sadsa,sadsa
+,,my 25 year old daughter is in trouble.,Women help desk,,
+,,my 25 year old daughter is in trouble.,Women help desk,,,,,
+,,i got medicle emergency now,Public healthcare,,
+,,i got medicle emergency now,Public healthcare,,,,,
+,,i need help for my daughter.,Women help desk,Home,daughter
+,,i murder my friends,Women help desk,dsfsd,sdfsd,dsfsd,dsfsdf,dsfsdf
+,,i need help for my mother.,Women help desk,Home,Mother in need of help.
+,,i need help for my mother.,Women help desk,sdfdsfsdfds,sdfdsfdsfds,Skipped,Skipped,Skipped
+,,i need help for my mother.,issue recorded,Not provided,User needs help for their mother.
+,,i need help for my mother.,issue recorded,dsfsd,sdfsdf,dsfsdfs,dsfsdf
+,,my child is not safe.,child safety,home or specific address,"child's name, age, and any specific danger or threat mentioned in the query."
+,,my child is not safe.,child safety,home,child safety concern.
+,,my child needs help.,child safety,Not provided in the query,Child in need of help
+,,,child safety,dfgfdggdf,fdgdfgdfgdfgdfg,fdgdfgdfgdfgdfgdf,Skipped,Skipped
