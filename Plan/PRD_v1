@@ -1,0 +1,624 @@
+# Police Complaint AI Assistant — Optimized Beginner-Friendly Plan
+
+## 1. Project Goal
+
+Build a simple AI-powered police complaint assistant.
+
+The user will enter a complaint in natural language. The AI will understand the complaint, classify it, extract important details, ask relevant follow-up questions, assign priority, and save the complaint.
+
+This project should look AI-powered, but the codebase should stay small and beginner-friendly.
+
+## 2. Final Tech Stack
+
+```text
+Frontend: Streamlit
+Backend: FastAPI
+AI: LangChain + Groq API
+Storage: SQLite
+Dashboard: Simple Streamlit records page
+```
+
+Do not use:
+
+```text
+RAG
+Vector DB
+LangGraph
+PDF generation
+Analytics dashboard
+Admin authentication
+Local LLM
+Complaint status tracking
+Anonymous reporting
+```
+
+## 3. Final Project Pipeline
+
+```text
+User enters complaint
+→ Streamlit sends complaint to FastAPI
+→ FastAPI calls AI service
+→ AI classifies complaint
+→ AI extracts location, time, persons, and summary
+→ Backend selects follow-up questions
+→ Backend assigns priority
+→ Complaint is saved in SQLite
+→ Streamlit shows complaint summary
+→ Records page displays saved complaints
+```
+
+## 4. Why AI Is Needed
+
+Without AI, this is just a complaint form.
+
+The AI is useful because users may write messy natural language.
+
+Example user complaint:
+
+```text
+Yesterday night near Tambaram, one car hit a bike and the rider was bleeding badly.
+```
+
+AI should extract:
+
+```text
+Category: road accident
+Location: Tambaram
+Time: yesterday night
+Persons involved: car driver, bike rider
+Priority: high
+Follow-up question: Were there any injuries or fatalities?
+```
+
+So the website is only the interface. The AI is the brain that understands the complaint.
+
+## 5. Final Features
+
+### Feature 1: Complaint Submission
+
+User enters a complaint in Streamlit.
+
+Example:
+
+```text
+A child is missing near school since evening.
+```
+
+### Feature 2: AI Classification
+
+AI classifies the complaint into one category.
+
+Allowed categories:
+
+```text
+child safety
+cyber crime incident
+women help desk
+public healthcare
+road accident
+murder / serious crime incident
+fire accident
+general issue recorded
+```
+
+If the AI is not sure, use:
+
+```text
+general issue recorded
+```
+
+### Feature 3: Entity Extraction
+
+AI extracts:
+
+```text
+location
+incident_time
+persons_involved
+summary
+```
+
+### Feature 4: Follow-Up Questions
+
+The system asks follow-up questions based on the category.
+
+Example for road accident:
+
+```text
+Where did the accident occur?
+What time did the accident happen?
+What vehicles were involved?
+Were there any injuries?
+Are there any witnesses?
+```
+
+### Feature 5: Priority Assignment
+
+Priority should be assigned using simple Python rules, not fully by AI.
+
+Priority values:
+
+```text
+High
+Medium
+Low
+```
+
+Example rules:
+
+```text
+child safety → High
+murder / serious crime incident → High
+fire accident → High
+road accident with injury → High
+cyber crime incident → Medium
+general issue recorded → Low
+```
+
+### Feature 6: SQLite Storage
+
+Save the complaint after AI processing.
+
+Stored fields:
+
+```text
+id
+complaint_text
+category
+location
+incident_time
+persons_involved
+summary
+priority
+followup_questions
+created_at
+```
+
+### Feature 7: Complaint Records Page
+
+Simple Streamlit page to view saved complaints.
+
+Show:
+
+```text
+Complaint ID
+Category
+Location
+Priority
+Summary
+Created time
+```
+
+This is not a full admin dashboard. It is only a simple records page.
+
+## 6. Clean Codebase Structure
+
+```text
+police-ai-assistant/
+│
+├── frontend/
+│   └── app.py
+│
+├── backend/
+│   ├── main.py
+│   ├── routes.py
+│   ├── schemas.py
+│   ├── ai_service.py
+│   ├── database.py
+│   ├── questions.py
+│   └── priority.py
+│
+├── complaints.db
+├── requirements.txt
+├── .env
+└── README.md
+```
+
+The current uploaded code keeps UI, AI prompt, follow-up questions, file upload, and CSV storage inside one Streamlit file. The optimized version separates those responsibilities into small files without making the project advanced.
+
+## 7. Expected Code Size Per File
+
+```text
+frontend/app.py        80–100 lines
+backend/main.py        20–35 lines
+backend/routes.py      60–90 lines
+backend/schemas.py     30–50 lines
+backend/ai_service.py  50–80 lines
+backend/database.py    60–90 lines
+backend/questions.py   30–60 lines
+backend/priority.py    20–40 lines
+```
+
+Keep every file below 100 lines.
+
+Do not over-split the project. Too many files will confuse beginners.
+
+## 8. File Responsibilities
+
+### `frontend/app.py`
+
+Handles the Streamlit UI.
+
+Responsibilities:
+
+```text
+Show complaint input
+Send complaint to FastAPI
+Display AI result
+Display follow-up questions
+Show saved complaint records
+```
+
+### `backend/main.py`
+
+Starts FastAPI.
+
+Responsibilities:
+
+```text
+Create FastAPI app
+Include routes
+Run backend server
+```
+
+### `backend/routes.py`
+
+Contains API endpoints.
+
+Endpoints:
+
+```text
+POST /complaints
+GET /complaints
+```
+
+Keep only two endpoints for beginner level.
+
+### `backend/schemas.py`
+
+Defines request and response structure.
+
+Example:
+
+```text
+ComplaintRequest
+ComplaintResponse
+```
+
+### `backend/ai_service.py`
+
+Handles AI classification and extraction.
+
+Responsibilities:
+
+```text
+Send complaint to Groq model
+Return structured JSON
+Extract category, location, time, persons, summary
+```
+
+The AI response must be JSON. Do not parse loose text manually.
+
+### `backend/database.py`
+
+Handles SQLite operations.
+
+Responsibilities:
+
+```text
+Create complaints table
+Save complaint
+Fetch complaints
+```
+
+### `backend/questions.py`
+
+Stores category-wise follow-up questions.
+
+Example:
+
+```text
+road accident:
+- Where did the accident occur?
+- Were there any injuries?
+- Are there any witnesses?
+```
+
+### `backend/priority.py`
+
+Assigns priority using simple rules.
+
+Responsibilities:
+
+```text
+Check category
+Check keywords
+Return High, Medium, or Low
+```
+
+## 9. Minimal API Design
+
+### `POST /complaints`
+
+Input:
+
+```json
+{
+  "complaint_text": "Yesterday night near Tambaram, one car hit a bike."
+}
+```
+
+Backend process:
+
+```text
+Classify complaint
+Extract details
+Get follow-up questions
+Assign priority
+Save complaint
+Return final result
+```
+
+Output:
+
+```json
+{
+  "id": 1,
+  "category": "road accident",
+  "location": "Tambaram",
+  "incident_time": "yesterday night",
+  "persons_involved": ["car driver", "bike rider"],
+  "summary": "Road accident involving a car and bike.",
+  "priority": "High",
+  "followup_questions": [
+    "Were there any injuries?",
+    "Are there any witnesses?"
+  ]
+}
+```
+
+### `GET /complaints`
+
+Returns all saved complaints.
+
+Output:
+
+```json
+[
+  {
+    "id": 1,
+    "category": "road accident",
+    "location": "Tambaram",
+    "priority": "High",
+    "summary": "Road accident involving a car and bike."
+  }
+]
+```
+
+## 10. Implementation Order
+
+### Step 1: Create Project Folder
+
+Create the folder structure.
+
+```text
+frontend/
+backend/
+.env
+requirements.txt
+README.md
+```
+
+### Step 2: Build FastAPI Backend
+
+Create:
+
+```text
+main.py
+routes.py
+schemas.py
+```
+
+Add only:
+
+```text
+POST /complaints
+GET /complaints
+```
+
+First test with dummy data.
+
+Do not add AI yet.
+
+### Step 3: Add SQLite
+
+Create:
+
+```text
+database.py
+```
+
+Implement:
+
+```text
+create_table()
+save_complaint()
+get_complaints()
+```
+
+Test saving and fetching complaints.
+
+### Step 4: Add AI Service
+
+Create:
+
+```text
+ai_service.py
+```
+
+Use LangChain + Groq.
+
+AI should return structured JSON:
+
+```json
+{
+  "category": "road accident",
+  "location": "Tambaram",
+  "incident_time": "yesterday night",
+  "persons_involved": ["car driver", "bike rider"],
+  "summary": "Road accident involving a car and bike."
+}
+```
+
+### Step 5: Add Follow-Up Questions
+
+Create:
+
+```text
+questions.py
+```
+
+Use a simple dictionary.
+
+Example:
+
+```python
+FOLLOWUP_QUESTIONS = {
+    "road accident": [
+        "Were there any injuries?",
+        "Are there any witnesses?"
+    ]
+}
+```
+
+### Step 6: Add Priority Logic
+
+Create:
+
+```text
+priority.py
+```
+
+Use simple conditions.
+
+Example:
+
+```text
+If category is child safety → High
+If complaint contains injury/bleeding/fire/missing → High
+If category is cyber crime incident → Medium
+Otherwise → Low
+```
+
+### Step 7: Connect Backend Flow
+
+In `routes.py`, combine:
+
+```text
+AI service
+Follow-up questions
+Priority assignment
+Database save
+Response return
+```
+
+### Step 8: Build Streamlit Frontend
+
+Create:
+
+```text
+frontend/app.py
+```
+
+The frontend should:
+
+```text
+Take complaint input
+Call POST /complaints
+Show AI result
+Show follow-up questions
+Show saved complaint records
+```
+
+### Step 9: Final Testing
+
+Test these complaint types:
+
+```text
+Road accident
+Cyber crime
+Child missing
+Fire accident
+Women help desk
+General issue
+```
+
+Check:
+
+```text
+Category is correct
+Location is extracted
+Priority is reasonable
+Complaint is saved
+Records page works
+```
+
+## 11. Beginner-Friendly Rules
+
+Keep code readable.
+
+Use simple functions.
+
+Avoid complex classes.
+
+Avoid decorators unless needed.
+
+Avoid too many endpoints.
+
+Avoid async unless required.
+
+Avoid advanced LangChain chains.
+
+Avoid LangGraph.
+
+Avoid vector database.
+
+Avoid local LLM setup.
+
+Avoid authentication.
+
+Avoid PDF and analytics.
+
+Avoid unnecessary UI styling.
+
+## 12. Final Learning Outcomes
+
+Students will learn:
+
+```text
+How to build a Streamlit frontend
+How to create a simple FastAPI backend
+How to call backend APIs from frontend
+How to use an LLM API with LangChain
+How to extract structured data from natural language
+How to assign priority using Python rules
+How to store results in SQLite
+How to view saved records
+```
+
+## 13. Final Decision
+
+This project should stay small.
+
+Final version:
+
+```text
+Streamlit UI
++ FastAPI backend
++ LangChain/Groq AI extraction
++ Rule-based priority
++ SQLite storage
++ Simple records page
+```
+
+This is enough to feel like a real AI assistant without making the codebase too advanced for beginners.
