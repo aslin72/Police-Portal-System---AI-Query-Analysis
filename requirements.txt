@@ -5,4 +5,5 @@ requests
 python-dotenv
 langchain
 langchain-groq
+langchain-openai
 pydantic

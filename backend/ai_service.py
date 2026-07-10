@@ -1,6 +1,7 @@
 import json
 import os
 from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from dotenv import load_dotenv
 
@@ -45,6 +46,30 @@ Return ONLY a valid JSON object with no additional text:
 """
 )
 
+_openrouter_key = os.getenv("OPENROUTER_API_KEY")
+_groq_key = os.getenv("GROQ_API_KEY")
+
+_OPENROUTER_CHAIN = None
+_GROQ_CHAIN = None
+
+if _openrouter_key:
+    _openrouter_llm = ChatOpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=_openrouter_key,
+        model="meta-llama/llama-3.3-70b-instruct:free",
+        temperature=0,
+    )
+    _OPENROUTER_CHAIN = PROMPT | _openrouter_llm
+
+if _groq_key:
+    _groq_llm = ChatGroq(
+        model="llama-3.1-8b-instant",
+        temperature=0,
+        groq_api_key=_groq_key,
+    )
+    _GROQ_CHAIN = PROMPT | _groq_llm
+
+
 def _parse_json(content):
     content = content.strip()
     start = content.find("{")
@@ -57,14 +82,6 @@ def _parse_json(content):
     return None
 
 
-_api_key = os.getenv("GROQ_API_KEY")
-_llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
-    temperature=0,
-    groq_api_key=_api_key,
-)
-_CHAIN = PROMPT | _llm
-
 def _safe_defaults(complaint_text):
     return {
         "category": "general issue recorded",
@@ -74,19 +91,8 @@ def _safe_defaults(complaint_text):
         "summary": complaint_text,
     }
 
-def analyze_complaint(complaint_text):
-    if not _api_key:
-        raise ValueError("GROQ_API_KEY not set. Add it to the .env file.")
 
-    try:
-        response = _CHAIN.invoke({"complaint_text": complaint_text})
-        data = _parse_json(response.content)
-    except Exception:
-        data = None
-
-    if data is None:
-        return _safe_defaults(complaint_text)
-
+def _normalize(data, complaint_text):
     if data.get("category") not in VALID_CATEGORIES:
         data["category"] = "general issue recorded"
 
@@ -98,3 +104,29 @@ def analyze_complaint(complaint_text):
         data["persons_involved"] = []
 
     return data
+
+
+def analyze_complaint(complaint_text):
+    if _OPENROUTER_CHAIN:
+        try:
+            response = _OPENROUTER_CHAIN.invoke(
+                {"complaint_text": complaint_text}
+            )
+            data = _parse_json(response.content)
+            if data is not None:
+                return _normalize(data, complaint_text)
+        except Exception as e:
+            print("OpenRouter failed, trying Groq:", e)
+
+    if _GROQ_CHAIN:
+        try:
+            response = _GROQ_CHAIN.invoke(
+                {"complaint_text": complaint_text}
+            )
+            data = _parse_json(response.content)
+            if data is not None:
+                return _normalize(data, complaint_text)
+        except Exception as e:
+            print("Groq failed, using safe defaults:", e)
+
+    return _safe_defaults(complaint_text)

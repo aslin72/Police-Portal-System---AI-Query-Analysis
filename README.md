@@ -17,7 +17,7 @@ An AI-powered police complaint assistant that classifies complaints, extracts ke
 |-----------|-----------|
 | Frontend | Streamlit |
 | Backend | FastAPI |
-| AI | LangChain + Groq API (llama-3.3-70b-versatile) |
+| AI | LangChain + OpenRouter (meta-llama/llama-3.3-70b-instruct:free) |
 | Priority | Rule-based Python |
 | Storage | SQLite |
 
@@ -28,7 +28,7 @@ backend/
   main.py         FastAPI app entry point
   routes.py       API endpoints
   schemas.py      Request/response models
-  ai_service.py   LangChain + Groq AI service
+  ai_service.py   LangChain + OpenRouter AI service (Groq fallback)
   database.py     SQLite operations
   questions.py    Category-wise follow-up questions
   priority.py     Rule-based priority assignment
@@ -54,12 +54,12 @@ requirements.txt  Python dependencies
    ```
    pip install -r requirements.txt
    ```
-5. Get a Groq API key from https://console.groq.com/
+5. Get an OpenRouter API key from https://openrouter.ai/keys (free tier available).
 6. Copy `.env.example` to `.env` and add your key:
    ```
    cp .env.example .env
    ```
-   Then edit `.env` and replace `your_groq_api_key_here` with your actual key.
+   Then edit `.env` and set `OPENROUTER_API_KEY`. A Groq key is optional — only needed if OpenRouter fails.
 
 ## Running
 
