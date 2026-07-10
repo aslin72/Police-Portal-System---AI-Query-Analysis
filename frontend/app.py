@@ -1,7 +1,8 @@
+import os
 import streamlit as st
 import requests
 
-API_URL = "http://localhost:8000"
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 st.title("Police Complaint AI Assistant")
 
@@ -15,6 +16,7 @@ if st.button("Submit Complaint"):
                 response = requests.post(
                     f"{API_URL}/complaints",
                     json={"complaint_text": complaint_text},
+                    timeout=30,
                 )
                 response.raise_for_status()
                 result = response.json()
@@ -48,10 +50,16 @@ if st.button("Submit Complaint"):
 st.divider()
 st.subheader("Complaint Records")
 
-try:
-    response = requests.get(f"{API_URL}/complaints")
+
+@st.cache_data(ttl=10)
+def fetch_complaints():
+    response = requests.get(f"{API_URL}/complaints", timeout=30)
     response.raise_for_status()
-    complaints = response.json()
+    return response.json()
+
+
+try:
+    complaints = fetch_complaints()
 
     if complaints:
         for c in complaints:

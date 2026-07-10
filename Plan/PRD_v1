@@ -216,22 +216,7 @@ police-ai-assistant/
 
 The current uploaded code keeps UI, AI prompt, follow-up questions, file upload, and CSV storage inside one Streamlit file. The optimized version separates those responsibilities into small files without making the project advanced.
 
-## 7. Expected Code Size Per File
 
-```text
-frontend/app.py        80–100 lines
-backend/main.py        20–35 lines
-backend/routes.py      60–90 lines
-backend/schemas.py     30–50 lines
-backend/ai_service.py  50–80 lines
-backend/database.py    60–90 lines
-backend/questions.py   30–60 lines
-backend/priority.py    20–40 lines
-```
-
-Keep every file below 100 lines.
-
-Do not over-split the project. Too many files will confuse beginners.
 
 ## 8. File Responsibilities
 

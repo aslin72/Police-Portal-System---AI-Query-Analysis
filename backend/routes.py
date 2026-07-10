@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, HTTPException
 from .schemas import ComplaintRequest, ComplaintResponse
 from .ai_service import analyze_complaint
@@ -5,6 +6,7 @@ from .questions import get_followup_questions
 from .priority import assign_priority
 from .database import save_complaint, get_complaints
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -13,8 +15,10 @@ def create_complaint(request: ComplaintRequest):
     try:
         ai_result = analyze_complaint(request.complaint_text)
     except ValueError as e:
+        logger.error("AI service error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
+        logger.error("AI service error: %s", e)
         raise HTTPException(status_code=500, detail=f"AI service error: {e}")
 
     questions = get_followup_questions(ai_result["category"])
@@ -30,6 +34,8 @@ def create_complaint(request: ComplaintRequest):
         priority=priority,
         followup_questions=questions,
     )
+
+    logger.info("Complaint #%d saved: %s [%s]", complaint_id, ai_result["category"], priority)
 
     return ComplaintResponse(
         id=complaint_id,

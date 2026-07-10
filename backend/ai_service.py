@@ -55,28 +55,31 @@ def _parse_json(content):
     raise ValueError("Failed to parse AI response as JSON")
 
 
+_api_key = os.getenv("GROQ_API_KEY")
+_llm = ChatGroq(
+    model="llama3-70b-8192",
+    temperature=0,
+    groq_api_key=_api_key,
+)
+_CHAIN = PROMPT | _llm
+
+
 def analyze_complaint(complaint_text):
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key or api_key == "your_groq_api_key_here":
+    if not _api_key:
         raise ValueError("GROQ_API_KEY not set. Add it to the .env file.")
 
-    llm = ChatGroq(
-        model="llama3-70b-8192",
-        temperature=0,
-        groq_api_key=api_key,
-    )
-
-    chain = PROMPT | llm
-    response = chain.invoke({"complaint_text": complaint_text})
+    response = _CHAIN.invoke({"complaint_text": complaint_text})
 
     data = _parse_json(response.content)
 
     if data.get("category") not in VALID_CATEGORIES:
         data["category"] = "general issue recorded"
 
-    data.setdefault("location", "")
-    data.setdefault("incident_time", "")
-    data.setdefault("persons_involved", [])
-    data.setdefault("summary", "")
+    for field in ("location", "incident_time", "summary"):
+        if not isinstance(data.get(field), str):
+            data[field] = ""
+
+    if not isinstance(data.get("persons_involved"), list):
+        data["persons_involved"] = []
 
     return data
