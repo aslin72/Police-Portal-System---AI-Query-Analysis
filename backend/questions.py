@@ -54,7 +54,7 @@ FOLLOWUP_QUESTIONS = {
 }
 
 
-def get_followup_questions(category):
+def get_followup_questions(category: str):
     return FOLLOWUP_QUESTIONS.get(
         category, FOLLOWUP_QUESTIONS["general issue recorded"]
     )

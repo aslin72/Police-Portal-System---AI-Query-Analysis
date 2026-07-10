@@ -1,10 +1,10 @@
 import logging
 from fastapi import APIRouter, HTTPException
-from .schemas import ComplaintRequest, ComplaintResponse
-from .ai_service import analyze_complaint
-from .questions import get_followup_questions
-from .priority import assign_priority
-from .database import save_complaint, get_complaints
+from backend.schemas import ComplaintRequest, ComplaintResponse
+from backend.ai_service import analyze_complaint
+from backend.questions import get_followup_questions
+from backend.priority import assign_priority
+from backend.database import save_complaint, get_complaints
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -39,6 +39,7 @@ def create_complaint(request: ComplaintRequest):
 
     return ComplaintResponse(
         id=complaint_id,
+        complaint_text=request.complaint_text,
         category=ai_result["category"],
         location=ai_result["location"],
         incident_time=ai_result["incident_time"],

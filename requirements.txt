@@ -1,7 +1,8 @@
 fastapi
-uvicorn[standard]
+uvicorn
 streamlit
 requests
+python-dotenv
 langchain
 langchain-groq
-python-dotenv
+pydantic

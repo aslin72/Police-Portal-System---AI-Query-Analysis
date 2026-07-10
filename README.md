@@ -2,14 +2,43 @@
 
 An AI-powered police complaint assistant that classifies complaints, extracts key details, assigns priority, and saves records.
 
+## Features
+
+- Natural language complaint input
+- AI-powered classification and entity extraction
+- Rule-based priority assignment
+- Category-wise follow-up questions
+- SQLite storage for complaint records
+- Streamlit web interface
+
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
 | Frontend | Streamlit |
 | Backend | FastAPI |
-| AI | LangChain + Groq API |
+| AI | LangChain + Groq API (llama-3.3-70b-versatile) |
+| Priority | Rule-based Python |
 | Storage | SQLite |
+
+## Project Structure
+
+```
+backend/
+  main.py         FastAPI app entry point
+  routes.py       API endpoints
+  schemas.py      Request/response models
+  ai_service.py   LangChain + Groq AI service
+  database.py     SQLite operations
+  questions.py    Category-wise follow-up questions
+  priority.py     Rule-based priority assignment
+frontend/
+  app.py          Streamlit UI
+complaints.db     SQLite database (auto-created)
+.env              Environment variables (do not commit)
+.env.example      Template for .env
+requirements.txt  Python dependencies
+```
 
 ## Setup
 
@@ -26,10 +55,11 @@ An AI-powered police complaint assistant that classifies complaints, extracts ke
    pip install -r requirements.txt
    ```
 5. Get a Groq API key from https://console.groq.com/
-6. Add your key to `.env`:
+6. Copy `.env.example` to `.env` and add your key:
    ```
-   GROQ_API_KEY=your_key_here
+   cp .env.example .env
    ```
+   Then edit `.env` and replace `your_groq_api_key_here` with your actual key.
 
 ## Running
 
@@ -40,12 +70,15 @@ You need two terminals:
 uvicorn backend.main:app --reload
 ```
 
+Backend runs at http://localhost:8000  
+Swagger docs at http://localhost:8000/docs
+
 **Terminal 2 — Start the frontend:**
 ```
 streamlit run frontend/app.py
 ```
 
-The app opens at http://localhost:8501
+Frontend runs at http://localhost:8501
 
 ## API Endpoints
 
@@ -54,20 +87,21 @@ The app opens at http://localhost:8501
 | POST | `/complaints` | Submit a complaint for AI analysis |
 | GET | `/complaints` | View all saved complaints |
 
-## Project Structure
+## Example Input
 
+```json
+{
+  "complaint_text": "Yesterday night near Tambaram, one car hit a bike and the rider was bleeding badly."
+}
 ```
-frontend/app.py       Streamlit UI
-backend/main.py       FastAPI app entry point
-backend/routes.py     API endpoints
-backend/schemas.py    Request/response models
-backend/ai_service.py LangChain + Groq AI service
-backend/database.py   SQLite operations
-backend/questions.py  Category-wise follow-up questions
-backend/priority.py   Rule-based priority assignment
-complaints.db         SQLite database (auto-created)
-.env                  Environment variables
-requirements.txt      Python dependencies
+
+## Expected Output
+
+```text
+Category: road accident
+Location: Tambaram
+Priority: High
+Follow-up Questions: road accident related questions
 ```
 
 ## How It Works

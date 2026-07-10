@@ -8,6 +8,7 @@ class ComplaintRequest(BaseModel):
 
 class ComplaintResponse(BaseModel):
     id: int
+    complaint_text: str
     category: str
     location: str
     incident_time: str

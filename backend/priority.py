@@ -5,15 +5,19 @@ HIGH_CATEGORIES = [
 ]
 
 HIGH_KEYWORDS = [
-    "injury", "bleeding", "fire", "missing", "death",
-    "fatal", "unconscious", "blood", "danger", "weapon",
+    "injury", "bleeding", "missing", "death",
+    "fatal", "weapon",
 ]
 
 MEDIUM_CATEGORIES = [
     "cyber crime incident",
+    "public healthcare",
     "road accident",
     "women help desk",
-    "public healthcare",
+]
+
+MEDIUM_KEYWORDS = [
+    "fraud", "money", "account", "bank",
 ]
 
 
@@ -29,5 +33,9 @@ def assign_priority(category, complaint_text):
 
     if category in MEDIUM_CATEGORIES:
         return "Medium"
+
+    for keyword in MEDIUM_KEYWORDS:
+        if keyword in text:
+            return "Medium"
 
     return "Low"

@@ -18,27 +18,29 @@ if st.button("Submit Complaint"):
                     json={"complaint_text": complaint_text},
                     timeout=30,
                 )
-                response.raise_for_status()
-                result = response.json()
+                if response.status_code != 200:
+                    st.error("Backend error. Please check if FastAPI is running.")
+                else:
+                    result = response.json()
 
-                st.success(f"Complaint saved! ID: {result['id']}")
+                    st.success(f"Complaint saved! ID: {result['id']}")
 
-                st.subheader("AI Analysis Result")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Category:** {result['category']}")
-                    st.write(f"**Location:** {result['location']}")
-                    st.write(f"**Priority:** {result['priority']}")
-                with col2:
-                    st.write(f"**Incident Time:** {result['incident_time']}")
-                    st.write(f"**Summary:** {result['summary']}")
+                    st.subheader("AI Analysis Result")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write(f"**Category:** {result['category']}")
+                        st.write(f"**Location:** {result['location']}")
+                        st.write(f"**Priority:** {result['priority']}")
+                    with col2:
+                        st.write(f"**Incident Time:** {result['incident_time']}")
+                        st.write(f"**Summary:** {result['summary']}")
 
-                persons = ", ".join(result["persons_involved"]) or "None identified"
-                st.write(f"**Persons Involved:** {persons}")
+                    persons = ", ".join(result["persons_involved"]) or "None identified"
+                    st.write(f"**Persons Involved:** {persons}")
 
-                st.subheader("Follow-Up Questions")
-                for q in result["followup_questions"]:
-                    st.write(f"- {q}")
+                    st.subheader("Follow-Up Questions")
+                    for q in result["followup_questions"]:
+                        st.write(f"- {q}")
 
             except requests.exceptions.ConnectionError:
                 st.error("Cannot connect to backend. Make sure FastAPI is running on port 8000.")
@@ -65,6 +67,7 @@ try:
         for c in complaints:
             label = f"#{c['id']} - {c['category']} [{c['priority']}]"
             with st.expander(label):
+                st.write(f"**Complaint:** {c['complaint_text']}")
                 st.write(f"**Location:** {c['location']}")
                 st.write(f"**Summary:** {c['summary']}")
                 st.write(f"**Created:** {c['created_at']}")
