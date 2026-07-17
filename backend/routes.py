@@ -1,87 +1,42 @@
-import logging
 import os
 import uuid
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from pathlib import Path
+
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from backend.schemas import ComplaintRequest, ComplaintResponse, TriageUpdateRequest
-from backend.ai_service import analyze_complaint
-from backend.questions import get_followup_questions
-from backend.triage import triage_complaint
+
+from backend.ai_service import analyze_complaint, continue_intake
 from backend.database import (
-    save_complaint,
-    get_complaints,
-    get_complaint,
-    update_triage,
-    save_evidence_batch,
-    get_evidence_by_complaint,
-    get_evidence_by_id,
+    get_complaint, get_complaints, get_evidence, get_evidence_file,
+    save_complaint, save_evidence, update_triage,
 )
+from backend.questions import remaining_questions
+from backend.schemas import ComplaintRequest, IntakeRequest, TriageUpdateRequest
+from backend.triage import triage_complaint
 
-logger = logging.getLogger(__name__)
+
 router = APIRouter()
-
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "evidence")
-MAX_FILE_SIZE = 10 * 1024 * 1024
+UPLOAD_DIR = Path(__file__).resolve().parents[1] / "uploads" / "evidence"
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf", ".txt"}
+MAX_FILE_SIZE = 10 * 1024 * 1024
 
-STATUSES = {"New", "Under Review", "Assigned", "Resolved", "Closed"}
+
+@router.post("/intake/chat")
+def intake_chat(request: IntakeRequest):
+    return continue_intake(request.message, request.draft)
 
 
-@router.post("/complaints", response_model=ComplaintResponse)
+@router.post("/complaints")
 def create_complaint(request: ComplaintRequest):
-    try:
-        ai_result = analyze_complaint(request.complaint_text)
-    except ValueError as e:
-        logger.error("AI service error: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        logger.error("AI service error: %s", e)
-        raise HTTPException(status_code=500, detail=f"AI service error: {e}")
-
-    triage = triage_complaint(
-        category=ai_result["category"],
-        complaint_text=request.complaint_text,
-        ai_result=ai_result,
-        evidence_count=0,
+    payload = request.model_dump()
+    context = request.complaint_text + "\n" + "\n".join(
+        f"{key}: {value}" for key, value in payload.items() if key != "complaint_text"
     )
-
-    questions = get_followup_questions(
-        category=ai_result["category"],
-        ai_result=ai_result,
-        complaint_text=request.complaint_text,
-        evidence_count=0,
-    )
-
-    complaint_id = save_complaint(
-        complaint_text=request.complaint_text,
-        category=ai_result["category"],
-        location=ai_result["location"],
-        incident_time=ai_result["incident_time"],
-        persons_involved=ai_result["persons_involved"],
-        summary=ai_result["summary"],
-        priority=triage["priority"],
-        followup_questions=questions,
-        reporter_name=request.reporter_name,
-        reporter_phone=request.reporter_phone,
-        reporter_email=request.reporter_email,
-        citizen_incident_location=request.incident_location,
-        citizen_incident_time=request.incident_time,
-        assigned_unit=triage["assigned_unit"],
-        triage_reason=triage["triage_reason"],
-        risk_flags=triage["risk_flags"],
-        recommended_action=triage["recommended_action"],
-    )
-
-    logger.info(
-        "Complaint #%d saved: %s [%s] → %s",
-        complaint_id, ai_result["category"], triage["priority"], triage["assigned_unit"],
-    )
-
-    complaint = get_complaint(complaint_id)
-    if complaint is None:
-        logger.error("Complaint #%d could not be read after creation", complaint_id)
-        raise HTTPException(status_code=500, detail="Complaint could not be loaded after creation")
-    return complaint
+    ai = analyze_complaint(context)
+    ai["location"], ai["incident_time"] = request.location, request.incident_time
+    triage = triage_complaint(ai["category"], context)
+    complaint_id = save_complaint(payload, ai, triage, remaining_questions(payload))
+    return get_complaint(complaint_id)
 
 
 @router.get("/complaints")
@@ -90,135 +45,69 @@ def list_complaints():
 
 
 @router.get("/complaints/{complaint_id}")
-def get_single_complaint(complaint_id: int):
+def complaint_detail(complaint_id: int):
     complaint = get_complaint(complaint_id)
-    if complaint is None:
-        raise HTTPException(status_code=404, detail="Complaint not found")
+    if not complaint:
+        raise HTTPException(404, "Complaint not found")
     return complaint
 
 
 @router.patch("/complaints/{complaint_id}/triage")
-def patch_triage(complaint_id: int, update: TriageUpdateRequest):
-    complaint = get_complaint(complaint_id)
-    if complaint is None:
-        raise HTTPException(status_code=404, detail="Complaint not found")
-
-    if update.status is not None and update.status not in STATUSES:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Invalid status. Allowed: {', '.join(sorted(STATUSES))}",
-        )
-
-    updated = update_triage(complaint_id, status=update.status, officer_notes=update.officer_notes)
-    if updated is None:
-        raise HTTPException(status_code=404, detail="Complaint not found after update")
-    return updated
+def edit_triage(complaint_id: int, request: TriageUpdateRequest):
+    if not get_complaint(complaint_id):
+        raise HTTPException(404, "Complaint not found")
+    return update_triage(complaint_id, request.status, request.officer_notes)
 
 
 @router.post("/complaints/{complaint_id}/evidence")
 async def upload_evidence(complaint_id: int, files: list[UploadFile] = File(...)):
-    complaint = get_complaint(complaint_id)
-    if complaint is None:
-        raise HTTPException(status_code=404, detail="Complaint not found")
+    if not get_complaint(complaint_id):
+        raise HTTPException(404, "Complaint not found")
 
-    if not files:
-        raise HTTPException(status_code=400, detail="At least one evidence file is required")
-
-    validated_files = []
+    validated = []
     for file in files:
-        original_filename = os.path.basename((file.filename or "").replace("\\", "/"))
-        ext = os.path.splitext(original_filename)[1].lower()
-        if ext not in ALLOWED_EXTENSIONS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported file type: '{ext}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
-            )
-
-        try:
-            contents = await file.read()
-        except Exception as exc:
-            logger.exception("Could not read uploaded evidence file")
-            raise HTTPException(
-                status_code=400,
-                detail=f"Could not read file '{original_filename}'.",
-            ) from exc
-
+        name = Path(file.filename or "file").name
+        contents = await file.read()
+        if Path(name).suffix.lower() not in ALLOWED_EXTENSIONS:
+            raise HTTPException(400, f"Unsupported file: {name}")
         if len(contents) > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File '{original_filename}' exceeds 10 MB limit.",
-            )
+            raise HTTPException(400, f"File exceeds 10 MB: {name}")
+        validated.append((name, file.content_type or "application/octet-stream", contents))
 
-        stored_filename = f"{uuid.uuid4().hex}{ext}"
-        validated_files.append({
-            "original_filename": original_filename,
-            "stored_filename": stored_filename,
-            "content_type": file.content_type,
-            "file_size": len(contents),
-            "contents": contents,
-        })
-
-    complaint_dir = os.path.join(UPLOAD_DIR, f"complaint_{complaint_id}")
-    written_paths = []
-    evidence_records = []
-
+    folder = UPLOAD_DIR / f"complaint_{complaint_id}"
+    folder.mkdir(parents=True, exist_ok=True)
+    records, written = [], []
     try:
-        os.makedirs(complaint_dir, exist_ok=True)
-        for item in validated_files:
-            file_path = os.path.join(complaint_dir, item["stored_filename"])
-            with open(file_path, "xb") as destination:
-                written_paths.append(file_path)
-                destination.write(item["contents"])
-            evidence_records.append({
-                "original_filename": item["original_filename"],
-                "stored_filename": item["stored_filename"],
-                "file_path": file_path,
-                "content_type": item["content_type"],
-                "file_size": item["file_size"],
+        for name, content_type, contents in validated:
+            stored = f"{uuid.uuid4().hex}{Path(name).suffix.lower()}"
+            path = folder / stored
+            path.write_bytes(contents)
+            written.append(path)
+            records.append({
+                "original_filename": name, "stored_filename": stored,
+                "file_path": str(path), "content_type": content_type, "file_size": len(contents),
             })
+        ids = save_evidence(complaint_id, records)
+    except Exception:
+        for path in written:
+            path.unlink(missing_ok=True)
+        raise HTTPException(500, "Evidence upload failed")
 
-        evidence_ids = save_evidence_batch(complaint_id, evidence_records)
-    except Exception as exc:
-        for file_path in written_paths:
-            try:
-                os.remove(file_path)
-            except OSError:
-                logger.exception("Could not clean up evidence file '%s'", file_path)
-        logger.exception("Evidence upload failed for complaint #%d", complaint_id)
-        raise HTTPException(status_code=500, detail="Evidence upload failed") from exc
-
-    results = [
-        {
-            "id": evidence_id,
-            "complaint_id": complaint_id,
-            "original_filename": record["original_filename"],
-            "stored_filename": record["stored_filename"],
-            "file_size": record["file_size"],
-        }
-        for evidence_id, record in zip(evidence_ids, evidence_records)
-    ]
-    return {"uploaded": results}
+    return {"evidence": [{"id": evidence_id, "complaint_id": complaint_id,
+        "original_filename": record["original_filename"], "file_size": record["file_size"]}
+        for evidence_id, record in zip(ids, records)]}
 
 
 @router.get("/complaints/{complaint_id}/evidence")
 def list_evidence(complaint_id: int):
-    complaint = get_complaint(complaint_id)
-    if complaint is None:
-        raise HTTPException(status_code=404, detail="Complaint not found")
-    return {"evidence": get_evidence_by_complaint(complaint_id)}
+    if not get_complaint(complaint_id):
+        raise HTTPException(404, "Complaint not found")
+    return {"evidence": get_evidence(complaint_id)}
 
 
 @router.get("/evidence/{evidence_id}")
 def download_evidence(evidence_id: int):
-    record = get_evidence_by_id(evidence_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="Evidence not found")
-
-    if not os.path.exists(record["file_path"]):
-        raise HTTPException(status_code=404, detail="Evidence file not found on disk")
-
-    return FileResponse(
-        path=record["file_path"],
-        filename=record["original_filename"],
-        media_type=record.get("content_type") or "application/octet-stream",
-    )
+    record = get_evidence_file(evidence_id)
+    if not record or not os.path.exists(record["file_path"]):
+        raise HTTPException(404, "Evidence not found")
+    return FileResponse(record["file_path"], filename=record["original_filename"], media_type=record["content_type"])

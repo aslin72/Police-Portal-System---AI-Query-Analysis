@@ -1,132 +1,110 @@
 import json
+import logging
 import os
+
+from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import PromptTemplate
-from dotenv import load_dotenv
+
+from backend.questions import next_missing, next_question
+
 
 load_dotenv(os.path.join(os.path.dirname(__file__), os.pardir, ".env"))
+logger = logging.getLogger(__name__)
 
-VALID_CATEGORIES = [
-    "child safety",
-    "cyber crime incident",
-    "women help desk",
-    "public healthcare",
-    "road accident",
-    "murder / serious crime incident",
-    "fire accident",
-    "general issue recorded",
-]
+CATEGORIES = {
+    "child safety": ("child", "kid", "missing boy", "missing girl", "son is missing", "daughter is missing"),
+    "cyber crime incident": ("hack", "scam", "fraud", "online", "bank account"),
+    "women help desk": ("harassment", "stalking", "domestic violence", "woman"),
+    "public healthcare": ("hospital", "health", "medicine"),
+    "road accident": ("road accident", "accident", "crash", "car hit", "vehicle hit", "hit by", "hit and run"),
+    "murder / serious crime incident": ("murder", "killed", "weapon", "attack"),
+    "fire accident": ("fire", "burning", "smoke", "explosion"),
+}
 
-PROMPT = PromptTemplate.from_template(
-    """
-You are a police complaint analyzer. Classify and extract information
-from the following complaint.
+ANALYSIS_PROMPT = """You analyze police complaints. Return JSON only, without Markdown fences, with category, location,
+incident_time, persons_involved (a list), and a one-sentence summary. Category must be one of:
+{categories}. Complaint: {complaint}"""
 
-Categories (pick exactly one):
-- child safety
-- cyber crime incident
-- women help desk
-- public healthcare
-- road accident
-- murder / serious crime incident
-- fire accident
-- general issue recorded
+INTAKE_PROMPT = """You guide a police complaint interview. From the initial complaint, current
+draft, and latest answer, fill only facts clearly stated for location, incident_time, injured,
+money_lost, and evidence_available. Ask one short question for the first still-missing field in
+that order. injured, money_lost, and evidence_available should be short yes/no answers with any
+useful detail. Return JSON only with those five fields, next_field, and next_question. Use empty
+strings for unknown facts. Do not use Markdown fences. Initial complaint: {complaint}\nCurrent draft: {draft}\nLatest answer: {message}"""
 
-Extract:
-- location: where the incident occurred
-- incident_time: when it happened (as described by the user)
-- persons_involved: list of people mentioned
-- summary: one-line summary of the complaint
-
-Complaint: "{complaint_text}"
-
-Return ONLY a valid JSON object with no additional text:
-{{"category": "...", "location": "...", "incident_time": "...", "persons_involved": ["..."], "summary": "..."}}
-"""
-)
-
-_openrouter_key = os.getenv("OPENROUTER_API_KEY")
-_groq_key = os.getenv("GROQ_API_KEY")
-
-_OPENROUTER_CHAIN = None
-_GROQ_CHAIN = None
-
-if _openrouter_key:
-    _openrouter_llm = ChatOpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=_openrouter_key,
-        model="meta-llama/llama-3.3-70b-instruct:free",
-        temperature=0,
-    )
-    _OPENROUTER_CHAIN = PROMPT | _openrouter_llm
-
-if _groq_key:
-    _groq_llm = ChatGroq(
-        model="llama-3.1-8b-instant",
-        temperature=0,
-        groq_api_key=_groq_key,
-    )
-    _GROQ_CHAIN = PROMPT | _groq_llm
+_llms = []
+if key := os.getenv("OPENROUTER_API_KEY"):
+    _llms.append(("OpenRouter", ChatOpenAI(
+        base_url="https://openrouter.ai/api/v1", api_key=key,
+        model="meta-llama/llama-3.3-70b-instruct:free", temperature=0,
+        max_retries=0, timeout=30,
+    )))
+if key := os.getenv("GROQ_API_KEY"):
+    _llms.append(("Groq", ChatGroq(
+        model="llama-3.1-8b-instant", temperature=0, groq_api_key=key,
+        max_retries=0, timeout=30,
+    )))
 
 
-def _parse_json(content):
-    content = content.strip()
-    start = content.find("{")
-    end = content.rfind("}") + 1
-    if start != -1 and end > start:
+def _call(prompt):
+    for provider, llm in _llms:
         try:
-            return json.loads(content[start:end])
-        except json.JSONDecodeError:
-            return None
-    return None
+            content = llm.invoke(prompt).content.strip()
+            if content.startswith("```"):
+                content = "\n".join(content.splitlines()[1:-1])
+            return json.loads(content)
+        except Exception as exc:
+            logger.warning("%s failed; trying fallback: %s", provider, exc)
+    return {}
 
 
-def _safe_defaults(complaint_text):
-    return {
-        "category": "general issue recorded",
-        "location": "Not specified",
-        "incident_time": "Not specified",
-        "persons_involved": [],
-        "summary": complaint_text,
-    }
+def continue_intake(message, draft):
+    draft = {key: str(value).strip() for key, value in draft.items()}
+    missing = next_missing(draft)
+    if not draft.get("complaint_text"):
+        draft["complaint_text"] = message.strip()
+    elif missing:
+        draft[missing] = message.strip()
 
+    data = _call(INTAKE_PROMPT.format(
+        complaint=draft["complaint_text"], draft=json.dumps(draft), message=message
+    ))
+    for field in ("location", "incident_time", "injured", "money_lost", "evidence_available"):
+        value = data.get(field)
+        if not draft.get(field) and isinstance(value, str) and value.strip():
+            draft[field] = value.strip()
 
-def _normalize(data, complaint_text):
-    if data.get("category") not in VALID_CATEGORIES:
-        data["category"] = "general issue recorded"
-
-    for field in ("location", "incident_time", "summary"):
-        if not isinstance(data.get(field), str) or not data[field].strip():
-            data[field] = "Not specified"
-
-    if not isinstance(data.get("persons_involved"), list):
-        data["persons_involved"] = []
-
-    return data
+    missing = next_missing(draft)
+    question = data.get("next_question") if data.get("next_field") == missing else None
+    if not isinstance(question, str) or not question.strip():
+        question = next_question(draft)
+    return {"draft": draft, "question": question, "ready": missing is None}
 
 
 def analyze_complaint(complaint_text):
-    if _OPENROUTER_CHAIN:
-        try:
-            response = _OPENROUTER_CHAIN.invoke(
-                {"complaint_text": complaint_text}
-            )
-            data = _parse_json(response.content)
-            if data is not None:
-                return _normalize(data, complaint_text)
-        except Exception as e:
-            print("OpenRouter failed, trying Groq:", e)
+    data = _call(ANALYSIS_PROMPT.format(categories=", ".join(CATEGORIES) + ", general issue recorded", complaint=complaint_text))
+    result = _defaults(complaint_text)
+    if data.get("category") in {*CATEGORIES, "general issue recorded"}:
+        result["category"] = data["category"]
+    for field in ("location", "incident_time", "summary"):
+        if isinstance(data.get(field), str) and data[field].strip():
+            result[field] = data[field].strip()
+    if isinstance(data.get("persons_involved"), list):
+        result["persons_involved"] = [
+            str(person.get("name") or person) if isinstance(person, dict) else str(person)
+            for person in data["persons_involved"]
+        ]
+    return result
 
-    if _GROQ_CHAIN:
-        try:
-            response = _GROQ_CHAIN.invoke(
-                {"complaint_text": complaint_text}
-            )
-            data = _parse_json(response.content)
-            if data is not None:
-                return _normalize(data, complaint_text)
-        except Exception as e:
-            print("Groq failed, using safe defaults:", e)
 
-    return _safe_defaults(complaint_text)
+def _defaults(complaint_text):
+    text = complaint_text.lower()
+    category = next((name for name, words in CATEGORIES.items() if any(word in text for word in words)), "general issue recorded")
+    return {
+        "category": category,
+        "location": "Not specified",
+        "incident_time": "Not specified",
+        "persons_involved": [],
+        "summary": complaint_text.splitlines()[0][:240],
+    }
