@@ -3,8 +3,17 @@ import os
 import uuid
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
-from backend.schemas import ComplaintRequest, ComplaintResponse, TriageUpdateRequest
-from backend.ai_service import analyze_complaint
+from backend.schemas import (
+    ComplaintRequest, ComplaintResponse, TriageUpdateRequest,
+    ChatRequest, ChatResponse,
+)
+from backend.ai_service import (
+    analyze_complaint,
+    choose_final_complaint_text,
+    extract_complaint_details_from_message,
+    is_ready_to_file,
+    merge_collected_fields,
+)
 from backend.questions import get_followup_questions
 from backend.triage import triage_complaint
 from backend.database import (
@@ -15,6 +24,13 @@ from backend.database import (
     save_evidence_batch,
     get_evidence_by_complaint,
     get_evidence_by_id,
+    create_chat_session,
+    get_chat_session,
+    get_chat_sessions,
+    add_chat_message,
+    get_chat_messages,
+    mark_session_filed,
+    delete_chat_session,
 )
 
 logger = logging.getLogger(__name__)
@@ -222,3 +238,179 @@ def download_evidence(evidence_id: int):
         filename=record["original_filename"],
         media_type=record.get("content_type") or "application/octet-stream",
     )
+
+
+READY_TO_FILE_MESSAGE = "Great! I have all the information I need. Ready to file your complaint?"
+
+
+# Chat-based complaint filing endpoints
+@router.post("/chat/complaint", response_model=ChatResponse)
+def chat_complaint(request: ChatRequest):
+    try:
+        session = get_chat_session(request.session_id)
+        if session is None:
+            create_chat_session(request.session_id)
+
+        # The database is the source of truth for conversation context, not the
+        # client-supplied history, so a stale/partial payload can never cause
+        # the agent to "forget" previously collected details.
+        prior_extracted = {}
+        for msg in get_chat_messages(request.session_id):
+            if msg.get("extracted_data"):
+                prior_extracted.update(msg["extracted_data"])
+
+        extraction_result = extract_complaint_details_from_message(
+            request.user_message,
+            prior_extracted
+        )
+
+        # Merge server-side rather than trusting the LLM to echo back every
+        # field it was told about previously - guarantees nothing collected
+        # earlier in the conversation is ever silently dropped.
+        merged_fields = merge_collected_fields(
+            prior_extracted,
+            extraction_result.get("extracted_fields") or {},
+            request.user_message,
+        )
+
+        add_chat_message(request.session_id, "user", request.user_message, merged_fields)
+
+        ready_to_file = is_ready_to_file(merged_fields)
+        next_question = extraction_result.get("next_question") or None
+        if ready_to_file:
+            agent_message = READY_TO_FILE_MESSAGE
+        elif next_question:
+            agent_message = next_question
+        else:
+            agent_message = "Could you tell me a bit more about what happened?"
+
+        add_chat_message(request.session_id, "agent", agent_message, merged_fields)
+
+        return ChatResponse(
+            session_id=request.session_id,
+            agent_message=agent_message,
+            suggested_followups=extraction_result.get("suggested_followups"),
+            collected_fields=merged_fields,
+            ready_to_file=ready_to_file,
+        )
+    except Exception as e:
+        logger.error("Chat complaint error: %s", e)
+        raise HTTPException(status_code=500, detail=f"Chat error: {e}")
+
+
+@router.post("/chat/complaint/{session_id}/file", response_model=ComplaintResponse)
+def file_complaint_from_chat(session_id: str):
+    try:
+        session = get_chat_session(session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Chat session not found")
+
+        messages = get_chat_messages(session_id)
+        collected_data = {}
+        full_complaint_text = ""
+
+        for msg in messages:
+            if msg["role"] == "user":
+                full_complaint_text += msg["content"] + " "
+            if msg["extracted_data"]:
+                collected_data.update(msg["extracted_data"])
+
+        complaint_text = choose_final_complaint_text(
+            collected_data.get("complaint_text"),
+            full_complaint_text,
+        )
+
+        complaint_request = ComplaintRequest(
+            complaint_text=complaint_text,
+            reporter_name=collected_data.get("reporter_name"),
+            reporter_phone=collected_data.get("reporter_phone"),
+            reporter_email=collected_data.get("reporter_email"),
+            incident_location=collected_data.get("incident_location"),
+            incident_time=collected_data.get("incident_time"),
+        )
+
+        try:
+            ai_result = analyze_complaint(complaint_request.complaint_text)
+        except Exception as e:
+            logger.error("AI service error: %s", e)
+            raise HTTPException(status_code=500, detail=f"AI service error: {e}")
+
+        triage = triage_complaint(
+            category=ai_result["category"],
+            complaint_text=complaint_request.complaint_text,
+            ai_result=ai_result,
+            evidence_count=0,
+        )
+
+        questions = get_followup_questions(
+            category=ai_result["category"],
+            ai_result=ai_result,
+            complaint_text=complaint_request.complaint_text,
+            evidence_count=0,
+        )
+
+        complaint_id = save_complaint(
+            complaint_text=complaint_request.complaint_text,
+            category=ai_result["category"],
+            location=ai_result["location"],
+            incident_time=ai_result["incident_time"],
+            persons_involved=ai_result["persons_involved"],
+            summary=ai_result["summary"],
+            priority=triage["priority"],
+            followup_questions=questions,
+            reporter_name=complaint_request.reporter_name,
+            reporter_phone=complaint_request.reporter_phone,
+            reporter_email=complaint_request.reporter_email,
+            citizen_incident_location=complaint_request.incident_location,
+            citizen_incident_time=complaint_request.incident_time,
+            assigned_unit=triage["assigned_unit"],
+            triage_reason=triage["triage_reason"],
+            risk_flags=triage["risk_flags"],
+            recommended_action=triage["recommended_action"],
+        )
+
+        mark_session_filed(session_id, complaint_id)
+
+        logger.info(
+            "Complaint #%d filed from chat %s: %s [%s] → %s",
+            complaint_id, session_id, ai_result["category"], triage["priority"],
+            triage["assigned_unit"],
+        )
+
+        complaint = get_complaint(complaint_id)
+        if complaint is None:
+            logger.error("Complaint #%d could not be read after creation", complaint_id)
+            raise HTTPException(status_code=500, detail="Complaint could not be loaded after creation")
+        return complaint
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("File complaint from chat error: %s", e)
+        raise HTTPException(status_code=500, detail=f"Error filing complaint: {e}")
+
+
+@router.get("/chat/complaint")
+def list_chat_sessions():
+    return {"sessions": get_chat_sessions()}
+
+
+@router.get("/chat/complaint/{session_id}")
+def get_chat_session_with_messages(session_id: str):
+    session = get_chat_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    messages = get_chat_messages(session_id)
+    return {
+        "session": session,
+        "messages": messages,
+    }
+
+
+@router.delete("/chat/complaint/{session_id}")
+def delete_chat_session_endpoint(session_id: str):
+    session = get_chat_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    delete_chat_session(session_id)
+    return {"status": "deleted", "session_id": session_id}

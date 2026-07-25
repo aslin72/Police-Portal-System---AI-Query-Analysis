@@ -39,3 +39,31 @@ class ComplaintResponse(BaseModel):
 class TriageUpdateRequest(BaseModel):
     status: Optional[str] = None
     officer_notes: Optional[str] = None
+
+
+class ChatMessage(BaseModel):
+    role: str  # 'user' or 'agent'
+    content: str
+    timestamp: str
+    extracted_data: Optional[dict] = None
+
+
+class ChatSession(BaseModel):
+    id: str
+    created_at: str
+    updated_at: str
+    is_filed: bool = False
+    complaint_id: Optional[int] = None
+
+
+class ChatRequest(BaseModel):
+    session_id: str
+    user_message: str = Field(..., min_length=1)
+
+
+class ChatResponse(BaseModel):
+    session_id: str
+    agent_message: str
+    suggested_followups: Optional[List[str]] = None
+    collected_fields: dict = Field(default_factory=dict)
+    ready_to_file: bool = False

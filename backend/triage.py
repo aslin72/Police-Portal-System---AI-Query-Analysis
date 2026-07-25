@@ -12,7 +12,11 @@ UNIT_MAP = {
 EMERGENCY_KEYWORDS = [
     "child missing", "active fire", "murder", "death", "fatal", "deadly",
     "weapon", "threat to life", "immediate danger", "life threatening",
-    "hostage", "shooting", "stabbed", "terrorist", "bomb",
+    "hostage", "shooting", "shot", "stab", "stabbed", "stabbing", "terrorist", "bomb",
+    "kidnap", "kidnapped", "kidnapping", "abducted", "abduction",
+    "found a body", "dead body", "body found", "signs of violence",
+    "bleeding from my head", "bleeding from his head", "bleeding from her head",
+    "bleeding from the head", "head injury", "head wound",
 ]
 
 HIGH_CATEGORIES = [
@@ -21,8 +25,48 @@ HIGH_CATEGORIES = [
     "murder / serious crime incident",
 ]
 
+FRACTURE_KEYWORDS = [
+    "broke my arm", "broke his arm", "broke her arm",
+    "broke my leg", "broke his leg", "broke her leg",
+    "broke my left arm", "broke my right arm", "left arm is broken",
+    "right arm is broken", "arm is broken", "leg is broken",
+    "broken arm", "broken leg", "fractured",
+]
+
 HIGH_KEYWORDS = [
     "injury", "injuries", "injured", "bleeding", "missing",
+] + FRACTURE_KEYWORDS
+
+INJURY_KEYWORDS = [
+    "injury", "injuries", "injured", "bleeding", "wound", "wounds", "hurt",
+    "broken bone", "fracture", "hitting", "beating", "abuse", "attacked",
+    "slapped", "punched", "beaten",
+] + FRACTURE_KEYWORDS
+
+WEAPON_KEYWORDS = [
+    "gun", "knife", "weapon", "armed", "rifle", "pistol", "stab",
+    "stabbed", "stabbing", "stab wounds", "blade",
+    "shot", "shooting", "gunshot", "gunpoint", "gun point", "bullet",
+]
+
+MEDIUM_KEYWORDS = [
+    "gas leak",
+]
+
+WOMEN_HELP_DESK_URGENT_KEYWORDS = [
+    "assault", "rape", "domestic violence", "stalking", "immediate danger",
+    "hitting", "beating", "abuse", "hurt", "attacked", "slapped", "punched",
+    "beaten", "threatened", "knife", "weapon",
+]
+
+ROAD_INJURY_KEYWORDS = [
+    "injury", "injuries", "injured", "bleeding", "fatal", "death",
+]
+
+ROAD_EMERGENCY_KEYWORDS = [
+    "bleeding from my head", "bleeding from his head", "bleeding from her head",
+    "bleeding from the head", "head injury", "head wound", "unconscious",
+    "can't move", "cannot move", "fatal", "death",
 ]
 
 MEDIUM_CATEGORIES = [
@@ -65,7 +109,9 @@ def triage_complaint(category, complaint_text, ai_result=None, evidence_count=0)
 def _determine_priority(category, text, ai_result):
     text_lower = text
 
-    if category == "child safety" and ("missing" in text_lower or "disappeared" in text_lower):
+    if category == "child safety" and any(
+        kw in text_lower for kw in ["missing", "disappeared", "kidnap", "abduct"]
+    ):
         return "Emergency"
 
     if category == "fire accident" and any(kw in text_lower for kw in ["burning", "active fire", "spreading", "explosion"]):
@@ -83,14 +129,21 @@ def _determine_priority(category, text, ai_result):
         return "High"
 
     if category == "road accident":
-        has_injury = any(kw in text_lower for kw in ["injury", "injuries", "injured", "bleeding", "fatal", "death"])
+        if any(kw in text_lower for kw in ROAD_EMERGENCY_KEYWORDS):
+            return "Emergency"
+        has_injury = any(kw in text_lower for kw in ROAD_INJURY_KEYWORDS)
         return "High" if has_injury else "Medium"
 
     if category == "women help desk":
-        urgent_kw = ["assault", "rape", "domestic violence", "stalking", "immediate danger"]
-        return "High" if any(kw in text_lower for kw in urgent_kw) else "Medium"
+        has_urgent = any(kw in text_lower for kw in WOMEN_HELP_DESK_URGENT_KEYWORDS)
+        has_injury = any(kw in text_lower for kw in INJURY_KEYWORDS)
+        has_weapon = any(kw in text_lower for kw in WEAPON_KEYWORDS)
+        return "High" if has_urgent or has_injury or has_weapon else "Medium"
 
     if category in MEDIUM_CATEGORIES:
+        return "Medium"
+
+    if any(kw in text_lower for kw in MEDIUM_KEYWORDS):
         return "Medium"
 
     return "Low"
@@ -100,27 +153,25 @@ def _detect_risk_flags(category, text, ai_result):
     flags = []
     text_lower = text
 
-    injury_kw = ["injury", "injuries", "injured", "bleeding", "wound", "hurt", "broken bone", "fracture"]
-    if any(kw in text_lower for kw in injury_kw):
+    if any(kw in text_lower for kw in INJURY_KEYWORDS):
         flags.append("injury_reported")
 
     medical_kw = ["emergency", "ambulance", "hospital", "urgent medical", "paramedic"]
     if any(kw in text_lower for kw in medical_kw):
         flags.append("urgent_medical_attention")
 
-    weapon_kw = ["gun", "knife", "weapon", "armed", "rifle", "pistol"]
-    if any(kw in text_lower for kw in weapon_kw):
+    if any(kw in text_lower for kw in WEAPON_KEYWORDS):
         flags.append("weapon_involved")
 
-    child_kw = ["child", "kid", "infant", "baby", "toddler"]
-    if any(kw in text_lower for kw in child_kw):
+    child_kw = ["child", "kid", "infant", "baby", "toddler", "minor", "son", "daughter"]
+    if category == "child safety" or any(kw in text_lower for kw in child_kw):
         flags.append("child_involved")
 
     fire_kw = ["fire", "burning", "smoke", "explosion", "gas leak"]
     if any(kw in text_lower for kw in fire_kw):
         flags.append("fire_risk")
 
-    missing_kw = ["missing", "disappeared", "not found", "whereabouts unknown"]
+    missing_kw = ["missing", "disappeared", "not found", "whereabouts unknown", "kidnap", "abduct"]
     if any(kw in text_lower for kw in missing_kw):
         flags.append("person_missing")
 
@@ -170,13 +221,11 @@ def _build_triage_reason(category, priority, risk_flags, text):
         if high_hits:
             reasons.append(f"keyword match ({', '.join(high_hits)})")
         if category == "road accident":
-            injury_kw = ["injury", "injuries", "injured", "bleeding", "fatal", "death"]
-            road_hits = [k for k in injury_kw if k in text]
+            road_hits = [k for k in ROAD_INJURY_KEYWORDS if k in text]
             if road_hits:
                 reasons.append(f"injury indicator ({', '.join(road_hits)})")
         if category == "women help desk":
-            urgent_kw = ["assault", "rape", "domestic violence", "stalking", "immediate danger"]
-            wh_hits = [k for k in urgent_kw if k in text]
+            wh_hits = [k for k in WOMEN_HELP_DESK_URGENT_KEYWORDS if k in text]
             if wh_hits:
                 reasons.append(f"urgent indicator ({', '.join(wh_hits)})")
         if reasons:

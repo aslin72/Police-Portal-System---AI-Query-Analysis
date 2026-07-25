@@ -75,6 +75,32 @@ def create_table():
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id TEXT PRIMARY KEY,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_filed INTEGER DEFAULT 0,
+                complaint_id_fk INTEGER,
+                is_deleted INTEGER DEFAULT 0,
+                FOREIGN KEY (complaint_id_fk) REFERENCES complaints(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                extracted_data_json TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
+            )
+            """
+        )
         conn.commit()
 
     migrate()
@@ -250,3 +276,117 @@ def _row_to_dict(row):
         "officer_notes": row["officer_notes"],
         "updated_at": row["updated_at"],
     }
+
+
+# Chat session functions
+def create_chat_session(session_id):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        conn.execute("DELETE FROM chat_messages WHERE session_id = ?", (session_id,))
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO chat_sessions
+                (id, created_at, updated_at, is_filed, complaint_id_fk, is_deleted)
+            VALUES (?, ?, ?, 0, NULL, 0)
+            """,
+            (session_id, now, now),
+        )
+        conn.commit()
+    return {"id": session_id, "created_at": now, "updated_at": now, "is_filed": False}
+
+
+def get_chat_session(session_id):
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM chat_sessions WHERE id = ? AND is_deleted = 0",
+            (session_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def get_chat_sessions():
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM chat_sessions WHERE is_deleted = 0 ORDER BY updated_at DESC"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def add_chat_message(session_id, role, content, extracted_data=None):
+    from datetime import datetime, timezone
+    timestamp = datetime.now(timezone.utc).isoformat()
+    extracted_json = json.dumps(extracted_data) if extracted_data else None
+    with get_db() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO chat_messages (session_id, role, content, extracted_data_json, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (session_id, role, content, extracted_json, timestamp),
+        )
+        conn.execute(
+            "UPDATE chat_sessions SET updated_at = ? WHERE id = ?",
+            (timestamp, session_id),
+        )
+        conn.commit()
+        message_id = cursor.lastrowid
+    return {
+        "id": message_id,
+        "session_id": session_id,
+        "role": role,
+        "content": content,
+        "extracted_data": extracted_data,
+        "timestamp": timestamp,
+    }
+
+
+def get_chat_messages(session_id):
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM chat_messages WHERE session_id = ? ORDER BY timestamp ASC",
+            (session_id,),
+        ).fetchall()
+
+    messages = []
+    for row in rows:
+        msg_dict = dict(row)
+        if msg_dict.get("extracted_data_json"):
+            try:
+                msg_dict["extracted_data"] = json.loads(msg_dict["extracted_data_json"])
+            except json.JSONDecodeError:
+                msg_dict["extracted_data"] = None
+        else:
+            msg_dict["extracted_data"] = None
+        del msg_dict["extracted_data_json"]
+        messages.append(msg_dict)
+    return messages
+
+
+def mark_session_filed(session_id, complaint_id):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        conn.execute(
+            """
+            UPDATE chat_sessions SET is_filed = 1, complaint_id_fk = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (complaint_id, now, session_id),
+        )
+        conn.commit()
+    return get_chat_session(session_id)
+
+
+def delete_chat_session(session_id):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE chat_sessions SET is_deleted = 1, updated_at = ? WHERE id = ?",
+            (now, session_id),
+        )
+        conn.commit()
+    return True
