@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
@@ -82,17 +83,46 @@ _groq_key = os.getenv("GROQ_API_KEY")
 
 _OPENROUTER_CHAIN = None
 _GROQ_CHAIN = None
+_PROVIDER_DISABLED_UNTIL = {"openrouter": 0.0, "groq": 0.0}
+
+
+def _normalized_key(value):
+    if not isinstance(value, str):
+        return ""
+    key = " ".join(value.strip().split())
+    if not key or key.lower().startswith(("your_", "test", "none", "null")):
+        return ""
+    return key
+
+
+def _provider_available(provider):
+    return time.time() >= _PROVIDER_DISABLED_UNTIL.get(provider, 0.0)
+
+
+def _provider_error_message(error):
+    return str(error)
+
+
+def _handle_provider_error(provider, error):
+    message = _provider_error_message(error).lower()
+    if "401" in message or "missing authentication" in message or "invalid api key" in message:
+        _PROVIDER_DISABLED_UNTIL[provider] = time.time() + 60 * 60
+    elif "429" in message or "rate_limit" in message or "rate limit" in message:
+        _PROVIDER_DISABLED_UNTIL[provider] = time.time() + 60
 
 
 def _build_openrouter_chain(prompt, temperature):
-    if not _openrouter_key:
+    key = _normalized_key(_openrouter_key)
+    if not key:
         return None
     try:
         llm = ChatOpenAI(
             base_url="https://openrouter.ai/api/v1",
-            api_key=_openrouter_key,
+            api_key=key,
             model="meta-llama/llama-3.3-70b-instruct:free",
             temperature=temperature,
+            max_retries=0,
+            timeout=20,
         )
         return prompt | llm
     except Exception as e:
@@ -101,13 +131,16 @@ def _build_openrouter_chain(prompt, temperature):
 
 
 def _build_groq_chain(prompt, temperature):
-    if not _groq_key:
+    key = _normalized_key(_groq_key)
+    if not key:
         return None
     try:
         llm = ChatGroq(
             model="llama-3.1-8b-instant",
             temperature=temperature,
-            groq_api_key=_groq_key,
+            groq_api_key=key,
+            max_retries=0,
+            timeout=20,
         )
         return prompt | llm
     except Exception as e:
@@ -117,6 +150,26 @@ def _build_groq_chain(prompt, temperature):
 
 _OPENROUTER_CHAIN = _build_openrouter_chain(PROMPT, 0)
 _GROQ_CHAIN = _build_groq_chain(PROMPT, 0)
+
+TITLE_PROMPT = PromptTemplate.from_template(
+    """Generate a short, descriptive chat title (5-8 words) for this police complaint.
+Use the complaint details to make it specific — include location, incident type, or key detail.
+No quotes. No trailing punctuation. Title case.
+
+Examples:
+"My bike was stolen from MG Road in Pune" → "Bike Theft on MG Road, Pune"
+"House fire on Park Street with people trapped" → "House Fire, Park Street"
+"Someone scammed me on WhatsApp for 50000" → "WhatsApp Scam - Rs 50,000 Fraud"
+"My husband hit me with a knife" → "Domestic Violence with Weapon"
+"Water contamination making people sick in Sector 5 Noida" → "Water Contamination in Noida"
+
+Complaint: "{text}"
+
+Title:"""
+)
+
+_TITLE_GROQ_CHAIN = _build_groq_chain(TITLE_PROMPT, 0.2)
+_TITLE_OPENROUTER_CHAIN = _build_openrouter_chain(TITLE_PROMPT, 0.2)
 
 
 def _parse_json(content):
@@ -137,8 +190,95 @@ def _safe_defaults(complaint_text):
         "location": "Not specified",
         "incident_time": "Not specified",
         "persons_involved": [],
-        "summary": complaint_text,
+        "summary": _sanitize_summary_text(complaint_text),
     }
+
+
+def _sanitize_summary_text(value):
+    text = _clean_text(value)
+    text = re.sub(r"<\s*script\b[^>]*>.*?<\s*/\s*script\s*>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", "", text)
+    return _clean_text(text) or "No safe summary available"
+
+
+def _keyword_hit(text, keywords):
+    return any(keyword in text for keyword in keywords)
+
+
+_DETERMINISTIC_CATEGORY_RULES = [
+    (
+        "child safety",
+        [
+            "missing child", "child missing", "kidnapped", "kidnapping",
+            "abducted", "abduction", "minor missing", "son is missing",
+            "daughter is missing", "year-old son", "year-old daughter",
+            "school playground",
+        ],
+    ),
+    (
+        "fire accident",
+        [
+            "active fire", "house is on fire", "building is on fire",
+            "on fire", "gas cylinder exploded", "cylinder exploded",
+            "kitchen fire", "fire spreading", "electrical fire",
+            "burning building", "burning house", "fire in",
+            "fire started", "smoke is everywhere", "fire brigade",
+            "people trapped", "house fire", "building fire",
+        ],
+    ),
+    (
+        "murder / serious crime incident",
+        [
+            "found a body", "body in the alley", "dead body", "body found",
+            "signs of violence", "shot", "gunshot", "homicide", "murder",
+            "stabbed", "stab wounds", "armed robbery", "robbed with",
+        ],
+    ),
+    (
+        "road accident",
+        [
+            "road accident", "hit-and-run", "hit and run", "car hit",
+            "truck hit", "bus hit", "bike hit", "motorcycle", "scooter",
+            "two cars collided", "cars collided", "collided at the signal",
+            "drivers are injured", "traffic signal", "ring road",
+        ],
+    ),
+    (
+        "cyber crime incident",
+        [
+            "hacked", "blackmailing", "blackmail", "phishing", "online fraud",
+            "cyber fraud", "scam", "upi fraud", "fake profile",
+            "fake profiles", "online stalking", "stalking me online",
+            "email", "personal photos", "identity theft",
+        ],
+    ),
+    (
+        "women help desk",
+        [
+            "domestic violence", "dowry", "husband", "wife", "stalking",
+            "harassing me", "harassment", "following me",
+            "sending threatening messages", "threatening messages",
+            "abusing me", "beating me", "hitting me",
+        ],
+    ),
+    (
+        "public healthcare",
+        [
+            "food poisoning", "contaminated water", "unsafe food",
+            "public water tank", "vomiting", "fever", "health outbreak",
+            "getting sick", "families are affected", "restaurant",
+            "medical negligence", "hospital complaint", "unsanitary",
+        ],
+    ),
+]
+
+
+def _deterministic_category(complaint_text):
+    text = _clean_text(complaint_text).lower()
+    for category, keywords in _DETERMINISTIC_CATEGORY_RULES:
+        if _keyword_hit(text, keywords):
+            return category
+    return ""
 
 
 def _normalize(data, complaint_text):
@@ -148,6 +288,7 @@ def _normalize(data, complaint_text):
     for field in ("location", "incident_time", "summary"):
         if not isinstance(data.get(field), str) or not data[field].strip():
             data[field] = "Not specified"
+    data["summary"] = _sanitize_summary_text(data["summary"])
 
     if not isinstance(data.get("persons_involved"), list):
         data["persons_involved"] = []
@@ -156,16 +297,26 @@ def _normalize(data, complaint_text):
 
 
 def _apply_category_overrides(data, complaint_text):
+    deterministic_category = _deterministic_category(complaint_text)
+    if deterministic_category:
+        data["category"] = deterministic_category
+        return data
+
     text = _clean_text(complaint_text).lower()
     for category, keywords in _CATEGORY_OVERRIDES:
-        if any(keyword in text for keyword in keywords):
+        if _keyword_hit(text, keywords):
             data["category"] = category
             return data
     return data
 
 
 def analyze_complaint(complaint_text):
-    if _OPENROUTER_CHAIN:
+    deterministic_category = _deterministic_category(complaint_text)
+    base = _safe_defaults(complaint_text)
+    if deterministic_category:
+        base["category"] = deterministic_category
+
+    if _OPENROUTER_CHAIN and _provider_available("openrouter"):
         try:
             response = _OPENROUTER_CHAIN.invoke(
                 {"complaint_text": complaint_text}
@@ -174,9 +325,10 @@ def analyze_complaint(complaint_text):
             if data is not None:
                 return _apply_category_overrides(_normalize(data, complaint_text), complaint_text)
         except Exception as e:
+            _handle_provider_error("openrouter", e)
             print("OpenRouter failed, trying Groq:", e)
 
-    if _GROQ_CHAIN:
+    if _GROQ_CHAIN and _provider_available("groq"):
         try:
             response = _GROQ_CHAIN.invoke(
                 {"complaint_text": complaint_text}
@@ -185,9 +337,10 @@ def analyze_complaint(complaint_text):
             if data is not None:
                 return _apply_category_overrides(_normalize(data, complaint_text), complaint_text)
         except Exception as e:
+            _handle_provider_error("groq", e)
             print("Groq failed, using safe defaults:", e)
 
-    return _apply_category_overrides(_safe_defaults(complaint_text), complaint_text)
+    return _apply_category_overrides(base, complaint_text)
 
 
 COLLECTOR_PROMPT = PromptTemplate.from_template(
@@ -248,7 +401,7 @@ def _collector_fallback(user_message):
 
 
 _MANDATORY_FIELDS = {"reporter_name", "incident_location", "incident_time", "complaint_text"}
-_EMPTY_FIELD_VALUES = {"", "none", "null", "n/a", "na", "not specified", "unknown"}
+_EMPTY_FIELD_VALUES = {"", "none", "null", "n/a", "na", "not specified", "unknown", "not provided"}
 _FILING_CONFIRMATIONS = {
     "yes",
     "yes file it",
@@ -532,6 +685,51 @@ def _normalize_collector_result(data, user_message):
     }
 
 
+def generate_chat_title(text):
+    cleaned = _clean_text(text)
+    if not cleaned:
+        return "New Complaint Chat"
+
+    # Try Groq first (faster)
+    if _TITLE_GROQ_CHAIN and _provider_available("groq"):
+        try:
+            response = _TITLE_GROQ_CHAIN.invoke({"text": cleaned})
+            title = _clean_text(response.content)
+            if title and len(title) > 3:
+                return title[:60]
+        except Exception as e:
+            _handle_provider_error("groq", e)
+
+    # Try OpenRouter
+    if _TITLE_OPENROUTER_CHAIN and _provider_available("openrouter"):
+        try:
+            response = _TITLE_OPENROUTER_CHAIN.invoke({"text": cleaned})
+            title = _clean_text(response.content)
+            if title and len(title) > 3:
+                return title[:60]
+        except Exception as e:
+            _handle_provider_error("openrouter", e)
+
+    # Fallback: deterministic rule-based
+    category = _deterministic_category(text)
+    title_map = {
+        "child safety": "Child Safety Complaint",
+        "cyber crime incident": "Cyber Crime Complaint",
+        "women help desk": "Harassment Complaint",
+        "public healthcare": "Public Healthcare Complaint",
+        "road accident": "Road Accident Complaint",
+        "murder / serious crime incident": "Serious Crime Complaint",
+        "fire accident": "Fire Accident Complaint",
+    }
+    if category in title_map:
+        return title_map[category]
+
+    words = re.findall(r"[A-Za-z0-9]+", cleaned)
+    if not words:
+        return "New Complaint Chat"
+    return " ".join(words[:5])[:50]
+
+
 def extract_complaint_details_from_message(user_message, prior_extracted=None):
     if prior_extracted is None:
         prior_extracted = {}
@@ -551,22 +749,24 @@ def extract_complaint_details_from_message(user_message, prior_extracted=None):
     # perceived responsiveness. Groq's LPU inference is materially faster
     # than OpenRouter's free-tier 70B model, so it goes first here even
     # though analyze_complaint prefers OpenRouter first.
-    if _COLLECTOR_GROQ:
+    if _COLLECTOR_GROQ and _provider_available("groq"):
         try:
             response = _COLLECTOR_GROQ.invoke(invoke_args)
             data = _parse_json(response.content)
             if data is not None:
                 return _normalize_collector_result(data, user_message)
         except Exception as e:
+            _handle_provider_error("groq", e)
             print("Collector Groq failed, trying OpenRouter:", e)
 
-    if _COLLECTOR_OPENROUTER:
+    if _COLLECTOR_OPENROUTER and _provider_available("openrouter"):
         try:
             response = _COLLECTOR_OPENROUTER.invoke(invoke_args)
             data = _parse_json(response.content)
             if data is not None:
                 return _normalize_collector_result(data, user_message)
         except Exception as e:
+            _handle_provider_error("openrouter", e)
             print("Collector OpenRouter failed, using safe fallback:", e)
 
     return _collector_fallback(user_message)
