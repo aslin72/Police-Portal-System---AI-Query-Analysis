@@ -50,74 +50,44 @@
 
 :root {
   --radius: 0.5rem;
+  color-scheme: dark;
 
-  --background: #F6F8FA;
-  --foreground: #111827;
-  --card: #FFFFFF;
-  --card-foreground: #111827;
-  --popover: #FFFFFF;
-  --popover-foreground: #111827;
-  --primary: #0B1F3A;
-  --primary-foreground: #F9FAFB;
-  --secondary: #123C69;
-  --secondary-foreground: #F9FAFB;
-  --muted: #E5E7EB;
-  --muted-foreground: #6B7280;
-  --accent: #2F855A;
-  --accent-foreground: #FFFFFF;
-  --destructive: #B42318;
-  --destructive-foreground: #FFFFFF;
-  --border: #D0D7DE;
-  --input: #D0D7DE;
-  --ring: #0B1F3A;
-  --chart-1: #0B1F3A;
-  --chart-2: #2F855A;
-  --chart-3: #D97706;
-  --chart-4: #B42318;
-  --chart-5: #123C69;
-  --sidebar: #0B1F3A;
-  --sidebar-foreground: #F9FAFB;
-  --sidebar-primary: #123C69;
-  --sidebar-primary-foreground: #F9FAFB;
-  --sidebar-accent: #1E3A5F;
-  --sidebar-accent-foreground: #F9FAFB;
-  --sidebar-border: #1E3A5F;
-  --sidebar-ring: #2F855A;
+  --background: #08070D;
+  --foreground: #FAF7FB;
+  --card: #17111F;
+  --card-foreground: #FAF7FB;
+  --popover: #120D19;
+  --popover-foreground: #FAF7FB;
+  --primary: #9F1239;
+  --primary-foreground: #FFF7FA;
+  --secondary: #22182D;
+  --secondary-foreground: #FAF7FB;
+  --muted: #2A2034;
+  --muted-foreground: #C7BFD1;
+  --accent: #BE185D;
+  --accent-foreground: #FFF7FA;
+  --destructive: #E5484D;
+  --destructive-foreground: #FFF7F7;
+  --border: #3A2A45;
+  --input: #30243B;
+  --ring: #D6A85A;
+  --chart-1: #BE185D;
+  --chart-2: #D6A85A;
+  --chart-3: #A21CAF;
+  --chart-4: #C7BFD1;
+  --chart-5: #FAF7FB;
+  --sidebar: #0E0A14;
+  --sidebar-foreground: #FAF7FB;
+  --sidebar-primary: #9F1239;
+  --sidebar-primary-foreground: #FFF7FA;
+  --sidebar-accent: #1C1426;
+  --sidebar-accent-foreground: #FAF7FB;
+  --sidebar-border: #332640;
+  --sidebar-ring: #D6A85A;
 }
 
 .dark {
-  --background: #0B1F3A;
-  --foreground: #F9FAFB;
-  --card: #123C69;
-  --card-foreground: #F9FAFB;
-  --popover: #123C69;
-  --popover-foreground: #F9FAFB;
-  --primary: #2F855A;
-  --primary-foreground: #FFFFFF;
-  --secondary: #1E3A5F;
-  --secondary-foreground: #F9FAFB;
-  --muted: #1E3A5F;
-  --muted-foreground: #9CA3AF;
-  --accent: #2F855A;
-  --accent-foreground: #FFFFFF;
-  --destructive: #EF4444;
-  --destructive-foreground: #FFFFFF;
-  --border: #1E3A5F;
-  --input: #1E3A5F;
-  --ring: #2F855A;
-  --chart-1: #2F855A;
-  --chart-2: #F59E0B;
-  --chart-3: #EF4444;
-  --chart-4: #3B82F6;
-  --chart-5: #10B981;
-  --sidebar: #0B1F3A;
-  --sidebar-foreground: #F9FAFB;
-  --sidebar-primary: #2F855A;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #1E3A5F;
-  --sidebar-accent-foreground: #F9FAFB;
-  --sidebar-border: #1E3A5F;
-  --sidebar-ring: #2F855A;
+  color-scheme: dark;
 }
 
 @layer base {
@@ -126,8 +96,192 @@
   }
   body {
     @apply bg-background text-foreground;
+    background:
+      linear-gradient(180deg, #08070D 0%, #0F0A16 52%, #08070D 100%);
   }
   html {
     @apply font-sans;
   }
+}
+
+/* Chat-specific animations */
+@keyframes liquidGlow {
+  0% {
+    box-shadow: 0 0 0 1px rgba(190, 24, 93, 0.4), 0 0 16px rgba(190, 24, 93, 0.14);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(214, 168, 90, 0.58), 0 0 22px rgba(190, 24, 93, 0.24);
+  }
+  100% {
+    box-shadow: 0 0 0 1px rgba(190, 24, 93, 0.4), 0 0 16px rgba(190, 24, 93, 0.14);
+  }
+}
+
+@keyframes shimmerPulse {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes portalGradientShift {
+  0% {
+    transform: translate3d(-2%, -2%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(2%, 1%, 0) scale(1.04);
+  }
+  100% {
+    transform: translate3d(-2%, -2%, 0) scale(1);
+  }
+}
+
+@keyframes portalScan {
+  0% {
+    transform: translateX(-24%);
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateX(24%);
+    opacity: 0.25;
+  }
+}
+
+@keyframes portalPulse {
+  0%, 100% {
+    opacity: 0.48;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@keyframes portalLogoFloat {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -2px, 0) scale(1.025);
+  }
+}
+
+@keyframes portalLogoGlow {
+  0%, 100% {
+    opacity: 0.72;
+    box-shadow:
+      0 0 0 1px rgba(190, 24, 93, 0.36),
+      0 0 18px rgba(190, 24, 93, 0.18),
+      0 0 38px rgba(159, 18, 57, 0.14);
+  }
+  50% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 1px rgba(214, 168, 90, 0.38),
+      0 0 26px rgba(244, 63, 94, 0.28),
+      0 0 56px rgba(190, 24, 93, 0.22);
+  }
+}
+
+@keyframes portalLogoSheen {
+  0% {
+    transform: translateX(-145%) rotate(18deg);
+    opacity: 0;
+  }
+  28% {
+    opacity: 0.72;
+  }
+  64%, 100% {
+    transform: translateX(145%) rotate(18deg);
+    opacity: 0;
+  }
+}
+
+.portal-gradient-field {
+  background:
+    radial-gradient(circle at 18% 20%, rgba(190, 24, 93, 0.34), transparent 30%),
+    radial-gradient(circle at 70% 18%, rgba(214, 168, 90, 0.13), transparent 26%),
+    radial-gradient(circle at 48% 72%, rgba(159, 18, 57, 0.24), transparent 36%),
+    linear-gradient(135deg, #08070D 0%, #120916 46%, #08070D 100%);
+}
+
+.portal-gradient-live {
+  animation: portalGradientShift 13s ease-in-out infinite;
+}
+
+.portal-scan-line {
+  animation: portalScan 6s ease-in-out infinite;
+}
+
+.portal-pulse {
+  animation: portalPulse 3.8s ease-in-out infinite;
+}
+
+.portal-logo-shell {
+  isolation: isolate;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(190, 24, 93, 0.2);
+}
+
+.portal-logo-live {
+  animation: portalLogoFloat 5.6s ease-in-out infinite;
+}
+
+.portal-logo-glow {
+  animation: portalLogoGlow 4.6s ease-in-out infinite;
+}
+
+.portal-logo-halo,
+.portal-logo-sheen {
+  position: absolute;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.portal-logo-halo {
+  inset: -1px;
+  z-index: 1;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background:
+    radial-gradient(circle at 55% 38%, rgba(244, 63, 94, 0.24), transparent 36%),
+    radial-gradient(circle at 50% 78%, rgba(214, 168, 90, 0.18), transparent 26%);
+  mix-blend-mode: screen;
+}
+
+.portal-logo-sheen {
+  inset: -30%;
+  z-index: 2;
+  width: 46%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.48), transparent);
+  animation: portalLogoSheen 4.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-gradient-live,
+  .portal-scan-line,
+  .portal-pulse,
+  .portal-logo-live,
+  .portal-logo-glow,
+  .portal-logo-sheen,
+  .chat-glow:focus-within,
+  .shimmer-line {
+    animation: none;
+  }
+}
+
+.chat-glow {
+  box-shadow: 0 0 0 1px rgba(58, 42, 69, 0.72), 0 16px 40px rgba(8, 7, 13, 0.18);
+}
+
+.chat-glow:focus-within {
+  animation: liquidGlow 2.4s ease-in-out infinite;
+}
+
+.shimmer-line {
+  animation: shimmerPulse 1.5s ease-in-out infinite;
 }
