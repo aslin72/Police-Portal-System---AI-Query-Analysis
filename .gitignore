@@ -5,3 +5,7 @@ __pycache__/
 venv/
 uploads/
 AGENTS.md
+.mimocode/
+.claude/
+db_backups/
+PROJECT_FEATURES_AND_ROADMAP.md

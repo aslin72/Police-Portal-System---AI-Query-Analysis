@@ -9,7 +9,7 @@ import { ComplaintFeaturePanel } from "@/components/complaint/ComplaintFeaturePa
 import { FIRDraftPreview } from "@/components/complaint/FIRDraftPreview";
 import { deriveComplaintInsight, type ComplaintInsight } from "@/lib/complaint-intelligence";
 import {
-  chatComplaint,
+  chatComplaintStream,
   listChatSessions,
   getChatSession,
   deleteChatSession,
@@ -29,6 +29,7 @@ export default function ChatPage() {
   const [activeSessionId, setActiveSessionId] = useState<string>("");
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [streamingStatus, setStreamingStatus] = useState("Preparing assistant response");
   const [isInitializing, setIsInitializing] = useState(true);
   const [readyToFile, setReadyToFile] = useState(false);
   const [submittingComplaint, setSubmittingComplaint] = useState(false);
@@ -59,6 +60,7 @@ export default function ChatPage() {
     setActiveSessionId(createSessionId());
     setMessages([]);
     setReadyToFile(false);
+    setShowDraftPreview(false);
   }, []);
 
   const loadMessages = useCallback(async (sessionId: string) => {
@@ -114,10 +116,15 @@ export default function ChatPage() {
     if (!activeSessionId || !content.trim()) return;
 
     setMessages((prev) => [...prev, { role: "user", content, timestamp: new Date().toISOString() }]);
+    setStreamingStatus("Preparing assistant response");
     setLoading(true);
 
     try {
-      const chatResponse = await chatComplaint(activeSessionId, content);
+      const chatResponse = await chatComplaintStream(activeSessionId, content, (event) => {
+        if (event.event === "status") {
+          setStreamingStatus(event.message);
+        }
+      });
 
       setMessages((prev) => [
         ...prev,
@@ -137,6 +144,7 @@ export default function ChatPage() {
       toast.error("Failed to send message. Please try again.");
     } finally {
       setLoading(false);
+      setStreamingStatus("Preparing assistant response");
     }
   };
 
@@ -148,6 +156,7 @@ export default function ChatPage() {
       const complaint = await fileComplaintFromChat(activeSessionId);
       toast.success(`Complaint #${complaint.id} filed successfully!`);
       await refreshSessions();
+      setShowDraftPreview(false);
       createNewSession();
     } catch (error) {
       console.error("Error filing complaint:", error);
@@ -280,7 +289,7 @@ export default function ChatPage() {
                   />
                 )
               )}
-              {loading && <SkeletonLoader />}
+              {loading && <SkeletonLoader status={streamingStatus} />}
             </>
           )}
 
@@ -333,6 +342,9 @@ export default function ChatPage() {
           open={showDraftPreview}
           onClose={() => setShowDraftPreview(false)}
           draftData={complaintInsight.draftData}
+          canFile={readyToFile}
+          isFiling={submittingComplaint}
+          onFileComplaint={handleFileComplaint}
         />
 
         {/* Input Area */}
@@ -342,6 +354,7 @@ export default function ChatPage() {
             disabled={loading || submittingComplaint}
             placeholder="Type your message here..."
             isLoading={loading}
+            loadingText={streamingStatus}
           />
         </div>
       </div>

@@ -10,10 +10,10 @@ interface EmergencyIntakeBannerProps {
 }
 
 const FIELD_ICONS: Record<string, typeof Phone> = {
-  emergency_location: MapPin,
-  emergency_phone: Phone,
-  emergency_danger: ShieldAlert,
-  emergency_people: Users,
+  incident_location: MapPin,
+  reporter_phone: Phone,
+  immediate_danger_status: ShieldAlert,
+  people_affected: Users,
 };
 
 export function EmergencyIntakeBanner({
@@ -66,7 +66,7 @@ export function EmergencyIntakeBanner({
               <Icon className="h-3.5 w-3.5 text-red-400 flex-shrink-0" />
               <div>
                 <span className="font-medium text-red-300">{field.label}</span>
-                <span className="text-red-400/60 ml-1">— {field.hint}</span>
+                <span className="text-red-400/60 ml-1">- {field.hint}</span>
               </div>
             </div>
           );

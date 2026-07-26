@@ -17,7 +17,7 @@ def get_db():
 
 
 def migrate():
-    new_columns = [
+    complaint_columns = [
         ("reporter_name", "TEXT"),
         ("reporter_phone", "TEXT"),
         ("reporter_email", "TEXT"),
@@ -31,14 +31,24 @@ def migrate():
         ("officer_notes", "TEXT"),
         ("updated_at", "TIMESTAMP"),
     ]
+    chat_session_columns = [
+        ("title", "TEXT"),
+    ]
 
     with get_db() as conn:
         existing = set(
             row[1] for row in conn.execute("PRAGMA table_info(complaints)").fetchall()
         )
-        for col_name, col_def in new_columns:
+        for col_name, col_def in complaint_columns:
             if col_name not in existing:
                 conn.execute(f"ALTER TABLE complaints ADD COLUMN {col_name} {col_def}")
+
+        chat_existing = set(
+            row[1] for row in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()
+        )
+        for col_name, col_def in chat_session_columns:
+            if col_name not in chat_existing:
+                conn.execute(f"ALTER TABLE chat_sessions ADD COLUMN {col_name} {col_def}")
         conn.commit()
 
 
@@ -83,6 +93,7 @@ def create_table():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_filed INTEGER DEFAULT 0,
                 complaint_id_fk INTEGER,
+                title TEXT,
                 is_deleted INTEGER DEFAULT 0,
                 FOREIGN KEY (complaint_id_fk) REFERENCES complaints(id)
             )
@@ -287,13 +298,27 @@ def create_chat_session(session_id):
         conn.execute(
             """
             INSERT OR REPLACE INTO chat_sessions
-                (id, created_at, updated_at, is_filed, complaint_id_fk, is_deleted)
-            VALUES (?, ?, ?, 0, NULL, 0)
+                (id, created_at, updated_at, is_filed, complaint_id_fk, title, is_deleted)
+            VALUES (?, ?, ?, 0, NULL, NULL, 0)
             """,
             (session_id, now, now),
         )
         conn.commit()
-    return {"id": session_id, "created_at": now, "updated_at": now, "is_filed": False}
+    return {
+        "id": session_id,
+        "created_at": now,
+        "updated_at": now,
+        "is_filed": False,
+        "complaint_id": None,
+        "title": None,
+    }
+
+
+def _session_row_to_dict(row):
+    data = dict(row)
+    data["is_filed"] = bool(data.get("is_filed"))
+    data["complaint_id"] = data.get("complaint_id_fk")
+    return data
 
 
 def get_chat_session(session_id):
@@ -304,7 +329,7 @@ def get_chat_session(session_id):
         ).fetchone()
     if row is None:
         return None
-    return dict(row)
+    return _session_row_to_dict(row)
 
 
 def get_chat_sessions():
@@ -312,7 +337,26 @@ def get_chat_sessions():
         rows = conn.execute(
             "SELECT * FROM chat_sessions WHERE is_deleted = 0 ORDER BY updated_at DESC"
         ).fetchall()
-    return [dict(row) for row in rows]
+    return [_session_row_to_dict(row) for row in rows]
+
+
+def update_chat_session_title(session_id, title):
+    from datetime import datetime, timezone
+    cleaned = " ".join((title or "").strip().split())
+    if not cleaned:
+        return get_chat_session(session_id)
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        conn.execute(
+            """
+            UPDATE chat_sessions
+            SET title = ?, updated_at = ?
+            WHERE id = ? AND (title IS NULL OR TRIM(title) = '')
+            """,
+            (cleaned[:80], now, session_id),
+        )
+        conn.commit()
+    return get_chat_session(session_id)
 
 
 def add_chat_message(session_id, role, content, extracted_data=None):

@@ -1,16 +1,18 @@
+import json
 import logging
 import os
 import uuid
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from backend.schemas import (
     ComplaintRequest, ComplaintResponse, TriageUpdateRequest,
-    ChatRequest, ChatResponse,
+    ChatRequest,
 )
 from backend.ai_service import (
     analyze_complaint,
     choose_final_complaint_text,
     extract_complaint_details_from_message,
+    generate_chat_title,
     is_ready_to_file,
     merge_collected_fields,
 )
@@ -31,6 +33,7 @@ from backend.database import (
     get_chat_messages,
     mark_session_filed,
     delete_chat_session,
+    update_chat_session_title,
 )
 
 logger = logging.getLogger(__name__)
@@ -243,59 +246,89 @@ def download_evidence(evidence_id: int):
 READY_TO_FILE_MESSAGE = "Great! I have all the information I need. Ready to file your complaint?"
 
 
+def _sse_event(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
 # Chat-based complaint filing endpoints
-@router.post("/chat/complaint", response_model=ChatResponse)
+@router.post("/chat/complaint")
 def chat_complaint(request: ChatRequest):
-    try:
-        session = get_chat_session(request.session_id)
-        if session is None:
-            create_chat_session(request.session_id)
+    def stream_chat_events():
+        try:
+            yield _sse_event("status", {"message": "Preparing your complaint session"})
+            session = get_chat_session(request.session_id)
+            if session is None:
+                session = create_chat_session(request.session_id)
 
-        # The database is the source of truth for conversation context, not the
-        # client-supplied history, so a stale/partial payload can never cause
-        # the agent to "forget" previously collected details.
-        prior_extracted = {}
-        for msg in get_chat_messages(request.session_id):
-            if msg.get("extracted_data"):
-                prior_extracted.update(msg["extracted_data"])
+            yield _sse_event("status", {"message": "Reviewing previous details"})
+            # The database is the source of truth for conversation context, not the
+            # client-supplied history, so a stale/partial payload can never cause
+            # the agent to "forget" previously collected details.
+            prior_extracted = {}
+            for msg in get_chat_messages(request.session_id):
+                if msg.get("extracted_data"):
+                    prior_extracted.update(msg["extracted_data"])
 
-        extraction_result = extract_complaint_details_from_message(
-            request.user_message,
-            prior_extracted
-        )
+            yield _sse_event("status", {"message": "Extracting new complaint details"})
+            extraction_result = extract_complaint_details_from_message(
+                request.user_message,
+                prior_extracted
+            )
 
-        # Merge server-side rather than trusting the LLM to echo back every
-        # field it was told about previously - guarantees nothing collected
-        # earlier in the conversation is ever silently dropped.
-        merged_fields = merge_collected_fields(
-            prior_extracted,
-            extraction_result.get("extracted_fields") or {},
-            request.user_message,
-        )
+            yield _sse_event("status", {"message": "Updating collected complaint details"})
+            # Merge server-side rather than trusting the LLM to echo back every
+            # field it was told about previously - guarantees nothing collected
+            # earlier in the conversation is ever silently dropped.
+            merged_fields = merge_collected_fields(
+                prior_extracted,
+                extraction_result.get("extracted_fields") or {},
+                request.user_message,
+            )
 
-        add_chat_message(request.session_id, "user", request.user_message, merged_fields)
+            add_chat_message(request.session_id, "user", request.user_message, merged_fields)
+            if not session.get("title"):
+                update_chat_session_title(
+                    request.session_id,
+                    generate_chat_title(merged_fields.get("complaint_text") or request.user_message),
+                )
 
-        ready_to_file = is_ready_to_file(merged_fields)
-        next_question = extraction_result.get("next_question") or None
-        if ready_to_file:
-            agent_message = READY_TO_FILE_MESSAGE
-        elif next_question:
-            agent_message = next_question
-        else:
-            agent_message = "Could you tell me a bit more about what happened?"
+            yield _sse_event("status", {"message": "Preparing assistant response"})
+            ready_to_file = is_ready_to_file(merged_fields)
+            next_question = extraction_result.get("next_question") or None
+            if ready_to_file:
+                agent_message = READY_TO_FILE_MESSAGE
+            elif next_question:
+                agent_message = next_question
+            else:
+                agent_message = "Could you tell me a bit more about what happened?"
 
-        add_chat_message(request.session_id, "agent", agent_message, merged_fields)
+            add_chat_message(request.session_id, "agent", agent_message, merged_fields)
 
-        return ChatResponse(
-            session_id=request.session_id,
-            agent_message=agent_message,
-            suggested_followups=extraction_result.get("suggested_followups"),
-            collected_fields=merged_fields,
-            ready_to_file=ready_to_file,
-        )
-    except Exception as e:
-        logger.error("Chat complaint error: %s", e)
-        raise HTTPException(status_code=500, detail=f"Chat error: {e}")
+            yield _sse_event(
+                "final",
+                {
+                    "session_id": request.session_id,
+                    "agent_message": agent_message,
+                    "suggested_followups": extraction_result.get("suggested_followups"),
+                    "collected_fields": merged_fields,
+                    "ready_to_file": ready_to_file,
+                },
+            )
+        except Exception as e:
+            logger.error("Chat complaint stream error: %s", e)
+            yield _sse_event(
+                "error",
+                {"message": "Unable to process this chat message. Please try again."},
+            )
+
+    return StreamingResponse(
+        stream_chat_events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/chat/complaint/{session_id}/file", response_model=ComplaintResponse)

@@ -17,6 +17,7 @@ EMERGENCY_KEYWORDS = [
     "found a body", "dead body", "body found", "signs of violence",
     "bleeding from my head", "bleeding from his head", "bleeding from her head",
     "bleeding from the head", "head injury", "head wound",
+    "house is on fire", "gas cylinder exploded", "cylinder exploded",
 ]
 
 HIGH_CATEGORIES = [
@@ -35,6 +36,7 @@ FRACTURE_KEYWORDS = [
 
 HIGH_KEYWORDS = [
     "injury", "injuries", "injured", "bleeding", "missing",
+    "robbed", "robbery", "threatening messages",
 ] + FRACTURE_KEYWORDS
 
 INJURY_KEYWORDS = [
@@ -50,7 +52,8 @@ WEAPON_KEYWORDS = [
 ]
 
 MEDIUM_KEYWORDS = [
-    "gas leak",
+    "gas leak", "stalking me online", "online stalking", "fake profile",
+    "fake profiles", "blackmail", "blackmailing",
 ]
 
 WOMEN_HELP_DESK_URGENT_KEYWORDS = [
@@ -61,6 +64,7 @@ WOMEN_HELP_DESK_URGENT_KEYWORDS = [
 
 ROAD_INJURY_KEYWORDS = [
     "injury", "injuries", "injured", "bleeding", "fatal", "death",
+    "drivers are injured", "driver is injured",
 ]
 
 ROAD_EMERGENCY_KEYWORDS = [
@@ -91,8 +95,8 @@ CATEGORY_KEYWORDS = {
 def triage_complaint(category, complaint_text, ai_result=None, evidence_count=0):
     text = complaint_text.lower()
 
-    priority = _determine_priority(category, text, ai_result)
     risk_flags = _detect_risk_flags(category, text, ai_result)
+    priority = _determine_priority(category, text, ai_result, risk_flags)
     recommended_action = _recommended_action(priority, risk_flags)
     assigned_unit = UNIT_MAP.get(category, "General Desk")
     triage_reason = _build_triage_reason(category, priority, risk_flags, text)
@@ -106,8 +110,9 @@ def triage_complaint(category, complaint_text, ai_result=None, evidence_count=0)
     }
 
 
-def _determine_priority(category, text, ai_result):
+def _determine_priority(category, text, ai_result, risk_flags=None):
     text_lower = text
+    risk_flags = risk_flags or []
 
     if category == "child safety" and any(
         kw in text_lower for kw in ["missing", "disappeared", "kidnap", "abduct"]
@@ -120,6 +125,12 @@ def _determine_priority(category, text, ai_result):
     emergency_hits = [kw for kw in EMERGENCY_KEYWORDS if kw in text_lower]
     if emergency_hits:
         return "Emergency"
+
+    if "weapon_involved" in risk_flags:
+        return "High"
+
+    if "injury_reported" in risk_flags and "none_identified" not in risk_flags:
+        return "High"
 
     if category in HIGH_CATEGORIES:
         return "High"
@@ -141,6 +152,9 @@ def _determine_priority(category, text, ai_result):
         return "High" if has_urgent or has_injury or has_weapon else "Medium"
 
     if category in MEDIUM_CATEGORIES:
+        return "Medium"
+
+    if "digital_fraud" in risk_flags:
         return "Medium"
 
     if any(kw in text_lower for kw in MEDIUM_KEYWORDS):
@@ -175,7 +189,11 @@ def _detect_risk_flags(category, text, ai_result):
     if any(kw in text_lower for kw in missing_kw):
         flags.append("person_missing")
 
-    if "cyber" in category or "fraud" in text_lower or "hacked" in text_lower or "scam" in text_lower:
+    digital_kw = [
+        "fraud", "hacked", "scam", "online", "fake profile", "fake profiles",
+        "blackmail", "blackmailing", "phishing", "identity theft",
+    ]
+    if "cyber" in category or any(kw in text_lower for kw in digital_kw):
         flags.append("digital_fraud")
 
     if not flags:

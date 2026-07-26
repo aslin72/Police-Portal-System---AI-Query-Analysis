@@ -33,6 +33,7 @@ export function MissingDetailsDetector({
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
         className="w-full flex items-center justify-between text-left"
       >
         <div className="flex items-center gap-2">
@@ -42,7 +43,7 @@ export function MissingDetailsDetector({
             ) : totalMissing > 0 ? (
               <AlertCircle className="h-4 w-4 text-yellow-400" />
             ) : (
-              <CheckCircle2 className="h-4 w-4 text-green-400" />
+              <CheckCircle2 className="h-4 w-4 text-amber-300" />
             )}
           </div>
           <span className="text-sm font-medium text-foreground">
@@ -72,7 +73,7 @@ export function MissingDetailsDetector({
           >
             <div className="space-y-2 pt-1">
               {missingDetails.map((field) => {
-                const isCritical = criticalMissing.some((c) => c.key === field.key);
+                const isCritical = field.priority === "critical" || criticalMissing.some((c) => c.key === field.key);
                 return (
                   <div
                     key={field.key}
@@ -91,7 +92,7 @@ export function MissingDetailsDetector({
                     />
                     <div>
                       <span className="font-medium text-foreground">{field.label}</span>
-                      <span className="text-muted-foreground ml-1">— {field.hint}</span>
+                      <span className="text-muted-foreground ml-1">- {field.hint}</span>
                     </div>
                   </div>
                 );

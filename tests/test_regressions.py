@@ -8,9 +8,11 @@ from backend.ai_service import (
     analyze_complaint,
     choose_final_complaint_text,
     extract_complaint_details_from_message,
+    generate_chat_title,
     is_ready_to_file,
     merge_collected_fields,
 )
+import backend.database as database
 from backend.triage import triage_complaint
 
 
@@ -163,50 +165,105 @@ class CollectorMergeRegressionTests(unittest.TestCase):
 
         self.assertIn("GA01AB5678", merged["complaint_text"])
 
+    def test_not_provided_values_are_replaced_by_real_details(self):
+        merged = merge_collected_fields(
+            {
+                "complaint_text": "My 8-year-old son Arjun is missing.",
+                "reporter_name": "Not provided",
+                "reporter_phone": "Not provided",
+            },
+            {},
+            "Please hurry, I'm his mother Anita Desai, my phone is 9988776655",
+        )
+
+        self.assertEqual(merged["reporter_name"], "Anita Desai")
+        self.assertEqual(merged["reporter_phone"], "9988776655")
+
 
 class TriageRegressionTests(unittest.TestCase):
-    def test_public_healthcare_override_for_food_poisoning(self):
-        old_openrouter = ai_service._OPENROUTER_CHAIN
-        old_groq = ai_service._GROQ_CHAIN
+    def setUp(self):
+        self.old_openrouter = ai_service._OPENROUTER_CHAIN
+        self.old_groq = ai_service._GROQ_CHAIN
         ai_service._OPENROUTER_CHAIN = None
         ai_service._GROQ_CHAIN = None
-        try:
-            result = analyze_complaint(
-                "Multiple people are getting food poisoning from the restaurant on Main Street"
-            )
-        finally:
-            ai_service._OPENROUTER_CHAIN = old_openrouter
-            ai_service._GROQ_CHAIN = old_groq
+        ai_service._PROVIDER_DISABLED_UNTIL = {"openrouter": 0.0, "groq": 0.0}
+
+    def tearDown(self):
+        ai_service._OPENROUTER_CHAIN = self.old_openrouter
+        ai_service._GROQ_CHAIN = self.old_groq
+        ai_service._PROVIDER_DISABLED_UNTIL = {"openrouter": 0.0, "groq": 0.0}
+
+    def test_public_healthcare_override_for_food_poisoning(self):
+        result = analyze_complaint(
+            "Multiple people are getting food poisoning from the restaurant on Main Street"
+        )
 
         self.assertEqual(result["category"], "public healthcare")
 
     def test_child_safety_override_for_year_old_son_missing(self):
-        old_openrouter = ai_service._OPENROUTER_CHAIN
-        old_groq = ai_service._GROQ_CHAIN
-        ai_service._OPENROUTER_CHAIN = None
-        ai_service._GROQ_CHAIN = None
-        try:
-            result = analyze_complaint("My 8-year-old son Arjun is missing from Shivaji Park.")
-        finally:
-            ai_service._OPENROUTER_CHAIN = old_openrouter
-            ai_service._GROQ_CHAIN = old_groq
+        result = analyze_complaint("My 8-year-old son Arjun is missing from Shivaji Park.")
 
         self.assertEqual(result["category"], "child safety")
 
     def test_body_with_signs_of_violence_is_serious_crime(self):
-        old_openrouter = ai_service._OPENROUTER_CHAIN
-        old_groq = ai_service._GROQ_CHAIN
-        ai_service._OPENROUTER_CHAIN = None
-        ai_service._GROQ_CHAIN = None
-        try:
-            result = analyze_complaint(
-                "I found a body in the alley behind the market, there are signs of violence"
-            )
-        finally:
-            ai_service._OPENROUTER_CHAIN = old_openrouter
-            ai_service._GROQ_CHAIN = old_groq
+        result = analyze_complaint(
+            "I found a body in the alley behind the market, there are signs of violence"
+        )
 
         self.assertEqual(result["category"], "murder / serious crime incident")
+
+    def test_smoke_women_help_desk_phrase_is_deterministic(self):
+        result = analyze_complaint(
+            "My neighbor is harassing me, following me and sending threatening messages"
+        )
+
+        self.assertEqual(result["category"], "women help desk")
+
+    def test_smoke_road_accident_phrase_is_deterministic(self):
+        result = analyze_complaint(
+            "Two cars collided at the signal on Ring Road, both drivers are injured"
+        )
+        triage = triage_complaint(result["category"], result["summary"])
+
+        self.assertEqual(result["category"], "road accident")
+        self.assertEqual(triage["priority"], "High")
+
+    def test_smoke_fire_phrase_is_deterministic(self):
+        result = analyze_complaint("A gas cylinder exploded in the kitchen, the house is on fire")
+
+        self.assertEqual(result["category"], "fire accident")
+
+    def test_chat_fire_phrase_is_deterministic_without_llm(self):
+        result = analyze_complaint(
+            "There's a fire in my apartment building, smoke is everywhere. "
+            "The fire started on the ground floor, it's spreading fast. "
+            "There are elderly people trapped on the 3rd floor."
+        )
+
+        self.assertEqual(result["category"], "fire accident")
+
+    def test_safe_default_summary_removes_script_tags(self):
+        result = analyze_complaint('<script>alert("xss")</script>My house was robbed')
+
+        self.assertNotIn("<script>", result["summary"].lower())
+        self.assertIn("house was robbed", result["summary"])
+
+    def test_provider_auth_and_rate_limit_errors_fall_back_to_rules(self):
+        class FailingChain:
+            def __init__(self, message):
+                self.message = message
+
+            def invoke(self, _args):
+                raise RuntimeError(self.message)
+
+        ai_service._OPENROUTER_CHAIN = FailingChain("401 Missing Authentication header")
+        ai_service._GROQ_CHAIN = FailingChain("429 rate_limit_exceeded")
+
+        result = analyze_complaint("A gas cylinder exploded in the kitchen, the house is on fire")
+
+        self.assertEqual(result["category"], "fire accident")
+        self.assertGreater(ai_service._PROVIDER_DISABLED_UNTIL["openrouter"], 0)
+        self.assertGreater(ai_service._PROVIDER_DISABLED_UNTIL["groq"], 0)
 
     def test_women_help_desk_physical_abuse_is_high_with_injury_flag(self):
         result = triage_complaint(
@@ -286,6 +343,24 @@ class TriageRegressionTests(unittest.TestCase):
         self.assertEqual(result["priority"], "Medium")
         self.assertIn("fire_risk", result["risk_flags"])
 
+    def test_robbery_with_knife_sets_high_priority(self):
+        result = triage_complaint(
+            "general issue recorded",
+            "I was robbed, they had a knife.",
+        )
+
+        self.assertEqual(result["priority"], "High")
+        self.assertIn("weapon_involved", result["risk_flags"])
+
+    def test_online_stalking_sets_medium_and_digital_flag(self):
+        result = triage_complaint(
+            "general issue recorded",
+            "Someone is stalking me online, creating fake profiles.",
+        )
+
+        self.assertEqual(result["priority"], "Medium")
+        self.assertIn("digital_fraud", result["risk_flags"])
+
     def test_road_accident_with_head_bleeding_is_emergency(self):
         result = triage_complaint(
             "road accident",
@@ -304,6 +379,31 @@ class TriageRegressionTests(unittest.TestCase):
         self.assertEqual(result["priority"], "Low")
         self.assertEqual(result["assigned_unit"], "General Desk")
         self.assertEqual(result["risk_flags"], ["none_identified"])
+
+
+class ChatTitleRegressionTests(unittest.TestCase):
+    def test_generate_chat_title_uses_deterministic_category(self):
+        self.assertEqual(
+            generate_chat_title("Two cars collided at the signal on Ring Road, both drivers are injured"),
+            "Road Accident Complaint",
+        )
+
+    def test_chat_title_is_persisted_once(self):
+        old_db_path = database.DB_PATH
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".db") as tmp:
+            database.DB_PATH = tmp.name
+            try:
+                database.create_table()
+                database.create_chat_session("title-test")
+                database.update_chat_session_title("title-test", "Road Accident Complaint")
+                database.update_chat_session_title("title-test", "Changed Later")
+                session = database.get_chat_session("title-test")
+            finally:
+                database.DB_PATH = old_db_path
+
+        self.assertEqual(session["title"], "Road Accident Complaint")
+        self.assertEqual(session["complaint_id"], None)
 
 
 if __name__ == "__main__":

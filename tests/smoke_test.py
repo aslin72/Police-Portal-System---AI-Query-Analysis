@@ -41,6 +41,14 @@ def log(scenario, assertion, passed, detail=""):
     print(f"  [{mark}] {assertion}" + (f" — {detail}" if detail else ""), flush=True)
 
 
+def body_preview(body):
+    if isinstance(body, (dict, list)):
+        text = json.dumps(body)
+    else:
+        text = str(body)
+    return text[:200]
+
+
 def req(method, url, **kwargs):
     global _call_count
     with _call_lock:
@@ -57,8 +65,73 @@ def req(method, url, **kwargs):
         return 0, str(e)
 
 
+def parse_sse_final(text):
+    event = "message"
+    data_lines = []
+    final_payload = None
+    error_message = None
+
+    def dispatch():
+        nonlocal event, data_lines, final_payload, error_message
+        if not data_lines:
+            event = "message"
+            return
+
+        raw_data = "\n".join(data_lines)
+        try:
+            data = json.loads(raw_data)
+        except json.JSONDecodeError:
+            data = {"message": raw_data}
+
+        if event == "final":
+            final_payload = data
+        elif event == "error":
+            error_message = data.get("message") if isinstance(data, dict) else str(data)
+
+        event = "message"
+        data_lines = []
+
+    for raw_line in text.replace("\r\n", "\n").split("\n"):
+        line = raw_line.strip("\r")
+        if line == "":
+            dispatch()
+            continue
+        if line.startswith(":"):
+            continue
+        if line.startswith("event:"):
+            event = line[len("event:"):].strip()
+        elif line.startswith("data:"):
+            data_lines.append(line[len("data:"):].lstrip())
+
+    dispatch()
+
+    if final_payload is not None:
+        return final_payload
+    return {
+        "_sse_error": error_message or "No final SSE event received",
+        "_raw": body_preview(text),
+    }
+
+
 def chat(sid, msg):
-    return req("post", f"{BASE_URL}/chat/complaint", json={"session_id": sid, "user_message": msg})
+    global _call_count
+    with _call_lock:
+        _call_count += 1
+    start = time.time()
+    try:
+        r = requests.post(
+            f"{BASE_URL}/chat/complaint",
+            json={"session_id": sid, "user_message": msg},
+            timeout=30,
+        )
+        ms = (time.time() - start) * 1000
+        with _call_lock:
+            _call_times.append(ms)
+        if r.status_code != 200:
+            return r.status_code, r.text
+        return r.status_code, parse_sse_final(r.text)
+    except Exception as e:
+        return 0, str(e)
 
 def file_chat(sid):
     return req("post", f"{BASE_URL}/chat/complaint/{sid}/file")
@@ -520,7 +593,8 @@ def c5_all_categories():
     for text, exp_cat, exp_unit, exp_pri in cases:
         label = exp_cat[:25]
         c, r = direct(text)
-        log(f"C5:{label}", "HTTP 200", c == 200); pc += (c == 200); tc += 1
+        log(f"C5:{label}", "HTTP 200", c == 200, f"got {c}: {body_preview(r)}" if c != 200 else "")
+        pc += (c == 200); tc += 1
         if c == 200:
             ok = r.get("category") == exp_cat
             log(f"C5:{label}", f"Category = {exp_cat}", ok, f"got: {r.get('category')}")

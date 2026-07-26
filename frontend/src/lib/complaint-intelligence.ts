@@ -34,11 +34,12 @@ export interface DraftData {
   estimatedRiskFlags: string[];
   estimatedAssignedUnit: string;
   estimatedRecommendedAction: string;
+  estimateConfidence: "high" | "low";
   summary: string;
 }
 
 const EMERGENCY_KEYWORDS = [
-  "missing child", "child missing", "kidnapped", "kidnapping",
+  "missing child", "child missing", "child is missing", "son is missing", "daughter is missing", "minor is missing", "kidnapped", "kidnapping",
   "weapon", "knife", "gun", "shot", "shooting", "stabbed", "stabbing",
   "bleeding", "serious injury", "injured badly",
   "fire", "burning", "trapped", "active fire",
@@ -49,13 +50,28 @@ const EMERGENCY_KEYWORDS = [
 ];
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  "child safety": ["child", "kid", "son", "daughter", "minor", "missing child", "kidnapped"],
-  "cyber crime incident": ["scam", "hacked", "phishing", "online fraud", "cyber", "email", "bank account", "upi", "otp"],
-  "women help desk": ["husband", "wife", "domestic", "harassment", "stalking", "assault", "dowry"],
-  "public healthcare": ["sick", "poisoning", "contaminated", "outbreak", "fever", "vomiting", "hospital"],
-  "road accident": ["car", "bike", "accident", "collision", "hit", "vehicle", "highway", "road"],
-  "murder / serious crime incident": ["murder", "dead", "body", "stab", "shot", "killed", "homicide"],
-  "fire accident": ["fire", "burning", "smoke", "explosion", "gas leak", "blaze"],
+  "child safety": ["missing child", "child missing", "child is missing", "son is missing", "daughter is missing", "minor missing", "minor is missing", "kidnapped child", "child kidnapped", "abducted child"],
+  "cyber crime incident": ["online fraud", "cyber crime", "phishing", "bank account", "upi", "otp", "hacked account", "fake profile"],
+  "women help desk": ["domestic violence", "dowry", "stalking", "sexual harassment", "husband beat", "wife assaulted"],
+  "public healthcare": ["food poisoning", "water poisoning", "contaminated water", "contaminated food", "disease outbreak", "public healthcare"],
+  "road accident": [
+    "road accident",
+    "hit-and-run",
+    "hit and run",
+    "car hit",
+    "truck hit",
+    "bus hit",
+    "bike hit",
+    "motorcycle accident",
+    "scooter accident",
+    "traffic collision",
+    "vehicle collision",
+    "collided",
+    "traffic signal",
+    "ring road",
+  ],
+  "murder / serious crime incident": ["murder", "dead body", "found dead", "stabbed", "stabbing", "shot", "gunshot", "killed", "homicide"],
+  "fire accident": ["active fire", "house fire", "building fire", "fire accident", "burning", "smoke", "explosion", "gas leak", "blaze"],
 };
 
 const PRIORITY_KEYWORDS: Record<string, string[]> = {
@@ -98,22 +114,16 @@ function extractPersonsInvolved(text: string): string[] {
   return persons;
 }
 
-function estimateCategory(text: string): string {
+function estimateCategory(text: string): { category: string; confidence: "high" | "low" } {
   const lower = text.toLowerCase();
-  let bestCategory = "general issue recorded";
-  let bestScore = 0;
 
   for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
-    let score = 0;
-    for (const kw of keywords) {
-      if (lower.includes(kw)) score++;
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      bestCategory = category;
+    if (hasAnyKeyword(lower, keywords)) {
+      return { category, confidence: "high" };
     }
   }
-  return bestCategory;
+
+  return { category: "general issue recorded", confidence: "low" };
 }
 
 function estimatePriority(text: string, category: string): string {
@@ -161,13 +171,23 @@ function buildDraftData(
   complaintText: string,
 ): DraftData {
   const text = complaintText || String(collectedFields.complaint_text || "");
-  const category = estimateCategory(text);
+  const { category, confidence } = estimateCategory(text);
   const priority = estimatePriority(text, category);
   const riskFlags = estimateRiskFlags(text, category);
   const persons = extractPersonsInvolved(text);
   const hasUrgent = riskFlags.some((f) =>
     ["injury_reported", "weapon_involved", "fire_risk", "person_missing", "urgent_medical_attention"].includes(f),
   );
+  const assignedUnit = confidence === "high" ? UNIT_MAP[category] || "General Desk" : "Not enough details to estimate yet";
+  const recommendedAction = confidence === "high"
+    ? priority === "Emergency"
+      ? "Respond immediately. Dispatch nearest unit and notify emergency services."
+      : hasUrgent
+        ? "Review immediately and contact emergency response."
+        : priority === "High"
+          ? "Prioritize review within 1 hour."
+          : "Assign for standard processing within 24 hours."
+    : "Collect more details before estimating routing.";
 
   return {
     reporterName: String(collectedFields.reporter_name || ""),
@@ -180,16 +200,57 @@ function buildDraftData(
     estimatedCategory: category,
     estimatedPriority: priority,
     estimatedRiskFlags: riskFlags,
-    estimatedAssignedUnit: UNIT_MAP[category] || "General Desk",
-    estimatedRecommendedAction: priority === "Emergency"
-      ? "Respond immediately. Dispatch nearest unit and notify emergency services."
-      : hasUrgent
-        ? "Review immediately and contact emergency response."
-        : priority === "High"
-          ? "Prioritize review within 1 hour."
-          : "Assign for standard processing within 24 hours.",
+    estimatedAssignedUnit: assignedUnit,
+    estimatedRecommendedAction: recommendedAction,
+    estimateConfidence: confidence,
     summary: text.length > 120 ? text.slice(0, 117) + "..." : text,
   };
+}
+
+function addMissingField(fields: MissingField[], field: MissingField): void {
+  const existingIndex = fields.findIndex((item) => item.key === field.key);
+  if (existingIndex === -1) {
+    fields.push(field);
+    return;
+  }
+
+  if (field.priority === "critical") {
+    fields[existingIndex] = field;
+  }
+}
+
+function hasImmediateDangerStatus(text: string): boolean {
+  return hasAnyKeyword(text, [
+    "safe now",
+    "not in danger",
+    "no immediate danger",
+    "danger is over",
+    "danger has passed",
+    "threat stopped",
+    "attacker left",
+    "attacker ran away",
+    "still in danger",
+    "danger is still active",
+    "attacker is still here",
+    "fire is still active",
+    "still trapped",
+  ]);
+}
+
+function hasPeopleAffectedDetails(text: string): boolean {
+  return (
+    /\b\d+\s+(people|persons|families|children|victims|workers|students|passengers)\b/i.test(text) ||
+    hasAnyKeyword(text, [
+      "one person",
+      "two people",
+      "many people",
+      "people affected",
+      "people trapped",
+      "no one else",
+      "nobody else",
+      "i am alone",
+    ])
+  );
 }
 
 export function deriveComplaintInsight(
@@ -197,11 +258,16 @@ export function deriveComplaintInsight(
   messages: Array<{ role: string; content: string }>,
 ): ComplaintInsight {
   const complaintText = String(collectedFields.complaint_text || "");
-  const allText = [complaintText, ...messages.map((m) => m.content)].join(" ");
-  const emergencyMode = hasAnyKeyword(allText, EMERGENCY_KEYWORDS);
+  const userMessagesText = messages.filter((m) => m.role === "user").map((m) => m.content).join(" ");
+  const userText = [
+    complaintText,
+    userMessagesText,
+  ].join(" ");
+  const draftText = complaintText || userMessagesText;
+  const emergencyMode = hasAnyKeyword(userText, EMERGENCY_KEYWORDS);
 
   const emergencyReason = emergencyMode
-    ? EMERGENCY_KEYWORDS.find((kw) => allText.toLowerCase().includes(kw)) || null
+    ? EMERGENCY_KEYWORDS.find((kw) => userText.toLowerCase().includes(kw)) || null
     : null;
 
   const missingDetails: MissingField[] = [];
@@ -245,10 +311,10 @@ export function deriveComplaintInsight(
   }
 
   // Context fields
-  if (hasAnyKeyword(allText, ["suspect", "perpetrator", "attacker", "assailant"])) {
+  if (hasAnyKeyword(userText, ["suspect", "perpetrator", "attacker", "assailant"])) {
     collectedDetails.push({ key: "suspect", label: "Suspect Details", value: "Mentioned in complaint" });
   }
-  if (hasAnyKeyword(allText, ["witness", "saw", "saw it"])) {
+  if (hasAnyKeyword(userText, ["witness", "saw", "saw it"])) {
     collectedDetails.push({ key: "witness", label: "Witnesses", value: "Mentioned in complaint" });
   }
 
@@ -256,23 +322,23 @@ export function deriveComplaintInsight(
   const requiredEmergencyFields: MissingField[] = [];
   if (emergencyMode) {
     if (!location) {
-      requiredEmergencyFields.push({ key: "emergency_location", label: "Location (Urgent)", priority: "critical", hint: "Please provide the exact location immediately" });
+      requiredEmergencyFields.push({ key: "incident_location", label: "Location (Urgent)", priority: "critical", hint: "Please provide the exact location immediately" });
     }
     if (!phone) {
-      requiredEmergencyFields.push({ key: "emergency_phone", label: "Contact Number (Urgent)", priority: "critical", hint: "We need a number to reach you" });
+      requiredEmergencyFields.push({ key: "reporter_phone", label: "Contact Number (Urgent)", priority: "critical", hint: "We need a number to reach you" });
     }
-    requiredEmergencyFields.push({ key: "emergency_danger", label: "Immediate Danger Status", priority: "critical", hint: "Are you or others in immediate danger right now?" });
-    if (hasAnyKeyword(allText, ["fire", "trapped", "burning"])) {
-      requiredEmergencyFields.push({ key: "emergency_people", label: "People Affected", priority: "critical", hint: "How many people are affected or trapped?" });
+    if (!hasImmediateDangerStatus(userText)) {
+      requiredEmergencyFields.push({ key: "immediate_danger_status", label: "Immediate Danger Status", priority: "critical", hint: "Are you or others in immediate danger right now?" });
+    }
+    if (hasAnyKeyword(userText, ["fire", "trapped", "burning"]) && !hasPeopleAffectedDetails(userText)) {
+      requiredEmergencyFields.push({ key: "people_affected", label: "People Affected", priority: "critical", hint: "How many people are affected or trapped?" });
     }
   }
 
-  // Critical missing = emergency fields that are also in the general missing list
-  const criticalMissing = requiredEmergencyFields.filter(
-    (ef) => !collectedDetails.some((cd) => cd.key === ef.key.replace("emergency_", "")),
-  );
+  requiredEmergencyFields.forEach((field) => addMissingField(missingDetails, field));
+  const criticalMissing = missingDetails.filter((field) => field.priority === "critical");
 
-  const draftData = buildDraftData(collectedFields, complaintText);
+  const draftData = buildDraftData(collectedFields, draftText);
 
   return {
     missingDetails,

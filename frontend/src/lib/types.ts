@@ -150,3 +150,208 @@ export function getEvidenceDownloadUrl(
 ): string {
   return `${apiUrl || API_URL}/evidence/${evidenceId}`;
 }
+
+// Chat API Types and Functions
+export interface ChatMessage {
+  role: "user" | "agent";
+  content: string;
+  timestamp?: string;
+  extracted_data?: Record<string, unknown>;
+}
+
+export interface ChatSession {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  is_filed: boolean;
+  complaint_id?: number;
+  complaint_id_fk?: number | null;
+  title?: string | null;
+}
+
+export interface ChatRequest {
+  session_id: string;
+  user_message: string;
+}
+
+export interface ChatResponse {
+  session_id: string;
+  agent_message: string;
+  suggested_followups?: string[];
+  collected_fields?: Record<string, unknown>;
+  ready_to_file?: boolean;
+}
+
+export type ChatStreamEvent =
+  | { event: "status"; message: string }
+  | { event: "metadata"; data: Record<string, unknown> }
+  | { event: "final"; data: ChatResponse }
+  | { event: "error"; message: string };
+
+function parseSseBlock(block: string): { event: string; data: unknown } | null {
+  const lines = block.split("\n");
+  let event = "message";
+  const dataLines: string[] = [];
+
+  for (const line of lines) {
+    if (!line || line.startsWith(":")) continue;
+    if (line.startsWith("event:")) {
+      event = line.slice("event:".length).trim();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice("data:".length).trimStart());
+    }
+  }
+
+  if (dataLines.length === 0) return null;
+
+  return {
+    event,
+    data: JSON.parse(dataLines.join("\n")),
+  };
+}
+
+function getStreamMessage(data: unknown, fallback: string): string {
+  if (data && typeof data === "object" && "message" in data) {
+    const value = (data as { message?: unknown }).message;
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return fallback;
+}
+
+function isChatResponse(data: unknown): data is ChatResponse {
+  return (
+    !!data &&
+    typeof data === "object" &&
+    typeof (data as ChatResponse).session_id === "string" &&
+    typeof (data as ChatResponse).agent_message === "string"
+  );
+}
+
+// The backend reconstructs conversation context from its own message
+// history for each session_id, so only the new message needs to be sent.
+export async function chatComplaintStream(
+  sessionId: string,
+  userMessage: string,
+  onEvent?: (event: ChatStreamEvent) => void,
+): Promise<ChatResponse> {
+  const res = await fetch(`${API_URL}/chat/complaint`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      user_message: userMessage,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err);
+  }
+
+  if (!res.body) {
+    throw new Error("Chat stream response was empty");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalResponse: ChatResponse | null = null;
+
+  const dispatchBlock = (block: string) => {
+    if (!block.trim()) return;
+
+    const parsed = parseSseBlock(block);
+    if (!parsed) return;
+
+    if (parsed.event === "status") {
+      onEvent?.({
+        event: "status",
+        message: getStreamMessage(parsed.data, "Processing complaint details"),
+      });
+      return;
+    }
+
+    if (parsed.event === "metadata" && parsed.data && typeof parsed.data === "object") {
+      onEvent?.({
+        event: "metadata",
+        data: parsed.data as Record<string, unknown>,
+      });
+      return;
+    }
+
+    if (parsed.event === "final") {
+      if (!isChatResponse(parsed.data)) {
+        throw new Error("Chat stream final response was invalid");
+      }
+      finalResponse = parsed.data;
+      onEvent?.({ event: "final", data: parsed.data });
+      return;
+    }
+
+    if (parsed.event === "error") {
+      const message = getStreamMessage(parsed.data, "Failed to process chat message");
+      onEvent?.({ event: "error", message });
+      throw new Error(message);
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+
+    let separatorIndex = buffer.indexOf("\n\n");
+    while (separatorIndex !== -1) {
+      const block = buffer.slice(0, separatorIndex);
+      buffer = buffer.slice(separatorIndex + 2);
+      dispatchBlock(block);
+      separatorIndex = buffer.indexOf("\n\n");
+    }
+  }
+
+  buffer += decoder.decode().replace(/\r\n/g, "\n");
+  if (buffer.trim()) {
+    dispatchBlock(buffer);
+  }
+
+  if (!finalResponse) {
+    throw new Error("Chat stream ended before final response");
+  }
+
+  return finalResponse;
+}
+
+export async function getChatSession(
+  sessionId: string,
+): Promise<{ session: ChatSession; messages: ChatMessage[] }> {
+  const res = await fetch(`${API_URL}/chat/complaint/${sessionId}`);
+  if (!res.ok) throw new Error("Failed to fetch chat session");
+  return res.json();
+}
+
+export async function listChatSessions(): Promise<{ sessions: ChatSession[] }> {
+  const res = await fetch(`${API_URL}/chat/complaint`);
+  if (!res.ok) throw new Error("Failed to fetch chat sessions");
+  return res.json();
+}
+
+export async function deleteChatSession(sessionId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/chat/complaint/${sessionId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete chat session");
+}
+
+export async function fileComplaintFromChat(
+  sessionId: string,
+): Promise<Complaint> {
+  const res = await fetch(`${API_URL}/chat/complaint/${sessionId}/file`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err);
+  }
+  return res.json();
+}
