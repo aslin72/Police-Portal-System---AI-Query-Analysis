@@ -1,8 +1,11 @@
 import Link from "next/link";
 import {
+  Activity,
   ArrowRight,
   Bell,
   Brain,
+  Building2,
+  Filter,
   FileSearch,
   FileText,
   FolderOpen,
@@ -10,9 +13,10 @@ import {
   LockKeyhole,
   Radio,
   ShieldCheck,
+  Sparkles,
+  Zap,
 } from "lucide-react";
 import { AnimatedComplaintLineChart, type ChartPoint } from "@/components/analytics/AnimatedComplaintLineChart";
-import { PortalLogo } from "@/components/brand/PortalLogo";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -67,10 +71,22 @@ const services = [
   },
 ];
 
+const trustMetrics = [
+  { label: "1,247+ Departments", icon: Building2 },
+  { label: "99.99% Uptime", icon: Activity },
+  { label: "SOC 2 Compliant", icon: ShieldCheck },
+];
+
 const trustItems = [
-  { label: "Secure intake", detail: "Evidence and complaint records", icon: LockKeyhole },
-  { label: "AI triage", detail: "Smarter case routing", icon: Brain },
-  { label: "Officer review", detail: "Built for accountability", icon: ShieldCheck },
+  { label: "Secure & Private", detail: "Protected complaint intake", icon: LockKeyhole },
+  { label: "Faster Reviews", detail: "Cleaner queues for officers", icon: Zap },
+  { label: "Actionable Insights", detail: "Live metrics and case trends", icon: Sparkles },
+];
+
+const dashboardHighlights = [
+  { label: "Secure & Private", icon: LockKeyhole },
+  { label: "Faster Reviews", icon: Zap },
+  { label: "Actionable Insights", icon: Sparkles },
 ];
 
 const securityItems = [
@@ -87,8 +103,11 @@ function LandingDashboardPreview() {
 
       <div className="grid min-h-[500px] overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#080B10] lg:grid-cols-[168px_1fr]">
         <aside className="hidden border-r border-white/10 bg-[#070A0E]/90 p-5 lg:block">
-          <PortalLogo size="mark" animated showGlow />
-          <nav className="mt-10 space-y-2 text-sm text-muted-foreground">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-white">Command Center</p>
+            <p className="text-[11px] text-muted-foreground">Live operations view</p>
+          </div>
+          <nav className="mt-8 space-y-2 text-sm text-muted-foreground">
             {["Overview", "Complaints", "Evidence", "Units", "Reports", "Alerts"].map((item, index) => (
               <div
                 key={item}
@@ -106,19 +125,44 @@ function LandingDashboardPreview() {
         <div className="p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h2 className="text-xl font-semibold text-white">Officer Dashboard</h2>
+              <h2 className="text-xl font-semibold text-white">Complaints Overview</h2>
               <p className="mt-1 text-xs text-muted-foreground">Preview data for complaint operations</p>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="hidden rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-muted-foreground sm:block">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-muted-foreground">
                 May 12 - May 18, 2025
               </div>
-              <Bell className="h-4 w-4 text-muted-foreground" />
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-muted-foreground">
+                All Units
+              </div>
+              <button
+                type="button"
+                aria-label="Filter"
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-muted-foreground"
+              >
+                <Filter className="h-4 w-4" />
+              </button>
+              <Bell className="ml-1 h-4 w-4 text-muted-foreground" />
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-xs text-white">OP</div>
             </div>
           </div>
 
-          <div className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 flex flex-wrap gap-2">
+            {dashboardHighlights.map((item) => {
+              const Icon = item.icon;
+              return (
+                <span
+                  key={item.label}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5 text-[11px] font-medium text-muted-foreground"
+                >
+                  <Icon className="h-3.5 w-3.5 text-ring" />
+                  {item.label}
+                </span>
+              );
+            })}
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {dashboardMetrics.map((metric) => (
               <div key={metric.label} className="rounded-xl border border-white/10 bg-white/[0.035] p-4">
                 <p className="text-xs text-muted-foreground">{metric.label}</p>
@@ -177,17 +221,26 @@ export default function HomePage() {
 
       <section className="relative mx-auto grid max-w-[1440px] gap-10 px-4 pb-10 pt-10 sm:px-6 lg:min-h-[calc(100dvh-3.5rem)] lg:grid-cols-[0.78fr_1.22fr] lg:items-center lg:px-8 lg:pb-14 lg:pt-12">
         <div className="max-w-2xl">
-          <div className="mb-6 flex items-center gap-4">
-            <PortalLogo size="hero" animated priority />
-            <div>
-              <p className="text-sm font-medium text-white">Police Complaint Portal</p>
-              <p className="mt-1 text-xs text-muted-foreground">Secure citizen intake and officer review</p>
-            </div>
+          <div className="mb-6 grid gap-3 sm:grid-cols-3">
+            {trustMetrics.map((metric) => {
+              const Icon = metric.icon;
+              return (
+                <div
+                  key={metric.label}
+                  className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.05]">
+                    <Icon className="h-4 w-4 text-ring" />
+                  </span>
+                  <span className="text-xs font-medium leading-snug text-white sm:text-[13px]">{metric.label}</span>
+                </div>
+              );
+            })}
           </div>
 
           <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-4 py-2 text-sm text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-            <PortalLogo size="compact" animated={false} showGlow={false} />
-            Trusted by departments. Built for communities.
+            <ShieldCheck className="h-4 w-4 text-ring" />
+            CJIS & SOC 2 Compliant
           </div>
 
           <h1 className="text-4xl font-semibold leading-[1.03] tracking-normal text-white sm:text-5xl lg:text-6xl xl:text-7xl">
