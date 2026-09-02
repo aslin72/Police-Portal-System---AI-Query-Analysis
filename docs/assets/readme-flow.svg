@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 320" role="img" aria-label="Request flow through the system">
+  <title>How one complaint travels through the system</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6B7A99"/>
+    </marker>
+    <style>
+      .node { fill:#0B1F3A; stroke:#2A3B5C; stroke-width:1.5; }
+      .label { font-family:'Segoe UI',Helvetica,Arial,sans-serif; font-size:15px; fill:#FFFFFF; font-weight:600; }
+      .sub { font-family:'Segoe UI',Helvetica,Arial,sans-serif; font-size:11px; fill:#9FB0CC; }
+      .caption { font-family:'Segoe UI',Helvetica,Arial,sans-serif; font-size:11px; fill:#6B7A99; }
+      .edge { stroke:#6B7A99; stroke-width:1.5; fill:none; marker-end:url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1120" height="320" fill="#F7F8FA"/>
+
+  <!-- connectors between the main pipeline -->
+  <line class="edge" x1="200" y1="95" x2="240" y2="95"/>
+  <line class="edge" x1="420" y1="95" x2="460" y2="95"/>
+  <line class="edge" x1="640" y1="95" x2="680" y2="95"/>
+  <line class="edge" x1="860" y1="95" x2="900" y2="95"/>
+
+  <text class="caption" x="203" y="86">files</text>
+  <text class="caption" x="423" y="86">POST</text>
+  <text class="caption" x="643" y="86">classify + triage</text>
+  <text class="caption" x="863" y="86">save</text>
+
+  <!-- branch down to officer -->
+  <polyline class="edge" points="990,130 990,175 900,175 900,220" fill="none"/>
+  <text class="caption" x="905" y="170">read later</text>
+
+  <!-- node 1: citizen -->
+  <rect class="node" x="20" y="60" width="180" height="70" rx="10"/>
+  <text class="label" x="40" y="90">Citizen</text>
+  <text class="sub" x="40" y="110">files a complaint in the browser</text>
+
+  <!-- node 2: frontend -->
+  <rect class="node" x="240" y="60" width="180" height="70" rx="10"/>
+  <text class="label" x="260" y="90">Next.js Frontend</text>
+  <text class="sub" x="260" y="110">chat.tsx / file-complaint.tsx</text>
+
+  <!-- node 3: backend -->
+  <rect class="node" x="460" y="60" width="180" height="70" rx="10"/>
+  <text class="label" x="480" y="90">FastAPI Backend</text>
+  <text class="sub" x="480" y="110">routes.py</text>
+
+  <!-- node 4: AI + triage -->
+  <rect class="node" x="680" y="60" width="180" height="70" rx="10"/>
+  <text class="label" x="700" y="90">AI + Triage Rules</text>
+  <text class="sub" x="700" y="110">ai_service.py / triage.py</text>
+
+  <!-- node 5: database -->
+  <rect class="node" x="900" y="60" width="180" height="70" rx="10"/>
+  <text class="label" x="920" y="90">SQLite + Evidence</text>
+  <text class="sub" x="920" y="110">database.py</text>
+
+  <!-- node 6: officer -->
+  <rect class="node" x="810" y="220" width="180" height="70" rx="10"/>
+  <text class="label" x="830" y="250">Officer Dashboard</text>
+  <text class="sub" x="830" y="270">reviews, updates status</text>
+
+  <!-- animated request packet traveling the pipeline -->
+  <circle r="6" fill="#FF9933">
+    <animateMotion dur="4s" repeatCount="indefinite"
+      path="M110,95 L330,95 L550,95 L770,95 L990,95"/>
+    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.9;1" dur="4s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- animated hand-off from database up to the officer -->
+  <circle r="6" fill="#138808">
+    <animateMotion dur="4s" begin="4s" repeatCount="indefinite"
+      path="M990,130 L990,175 L900,175 L900,220"/>
+    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.1;0.85;1" dur="4s" begin="4s" repeatCount="indefinite"/>
+  </circle>
+</svg>

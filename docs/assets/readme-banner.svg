@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 260" role="img" aria-label="Police Complaint AI Assistant">
+  <title>Police Complaint AI Assistant</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0B1F3A"/>
+      <stop offset="100%" stop-color="#0A1730"/>
+    </linearGradient>
+    <linearGradient id="scan" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FF9933" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#FF9933" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="clip">
+      <rect width="1200" height="260" rx="18"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#clip)">
+    <rect width="1200" height="260" fill="url(#bg)"/>
+
+    <!-- soft glow behind the shield -->
+    <circle cx="130" cy="120" r="90" fill="url(#glow)">
+      <animate attributeName="r" values="80;96;80" dur="4s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;1;0.6" dur="4s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- moving scan sweep -->
+    <rect x="-260" y="0" width="260" height="260" fill="url(#scan)">
+      <animateTransform attributeName="transform" type="translate"
+        values="-260 0; 1460 0" dur="6s" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- shield mark, matching frontend/public/assets/portal-logo.svg -->
+    <g transform="translate(58,32) scale(0.62)">
+      <path d="M100 30 L160 55 L160 110 C160 145 130 170 100 180 C70 170 40 145 40 110 L40 55 L100 30Z"
+        fill="#FFFFFF" stroke="#FF9933" stroke-width="4"/>
+      <path d="M82 105 L96 118 L118 90" stroke="#138808" stroke-width="10"
+        stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </g>
+
+    <!-- title -->
+    <text x="232" y="112" font-family="'Segoe UI', Helvetica, Arial, sans-serif"
+      font-size="42" font-weight="700" fill="#FFFFFF">
+      Police Complaint AI Assistant
+    </text>
+    <text x="234" y="148" font-family="'Segoe UI', Helvetica, Arial, sans-serif"
+      font-size="18" fill="#C9D4E6">
+      AI-assisted intake, triage, and evidence review for citizens and officers
+    </text>
+
+    <!-- flowing request dots, hinting at the pipeline below -->
+    <g fill="#FF9933">
+      <circle cx="234" cy="182" r="4">
+        <animate attributeName="cx" values="234;900;234" dur="5s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.9;1" dur="5s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+    <g fill="#FFFFFF">
+      <circle cx="234" cy="182" r="4">
+        <animate attributeName="cx" values="234;900;234" dur="5s" begin="1.2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.9;1" dur="5s" begin="1.2s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+    <g fill="#138808">
+      <circle cx="234" cy="182" r="4">
+        <animate attributeName="cx" values="234;900;234" dur="5s" begin="2.4s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.9;1" dur="5s" begin="2.4s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+    <line x1="234" y1="182" x2="900" y2="182" stroke="#2A3B5C" stroke-width="1.5" stroke-dasharray="2 6"/>
+
+    <!-- tricolor base stripe -->
+    <rect x="0" y="242" width="1200" height="6" fill="#FF9933"/>
+    <rect x="0" y="248" width="1200" height="6" fill="#FFFFFF"/>
+    <rect x="0" y="254" width="1200" height="6" fill="#138808"/>
+  </g>
+</svg>

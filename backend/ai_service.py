@@ -744,11 +744,6 @@ def extract_complaint_details_from_message(user_message, prior_extracted=None):
 
     invoke_args = {"user_message": user_message, "prior_extracted": json.dumps(prior_extracted)}
 
-    # Unlike analyze_complaint (a single one-shot call), the collector runs
-    # once per chat turn in an interactive loop, so latency directly affects
-    # perceived responsiveness. Groq's LPU inference is materially faster
-    # than OpenRouter's free-tier 70B model, so it goes first here even
-    # though analyze_complaint prefers OpenRouter first.
     if _COLLECTOR_GROQ and _provider_available("groq"):
         try:
             response = _COLLECTOR_GROQ.invoke(invoke_args)
