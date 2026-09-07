@@ -4,7 +4,7 @@ import os
 import uuid
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse, StreamingResponse
-from  backend.schemasimport (
+from backend.schemas import (
     ComplaintRequest, ComplaintResponse, TriageUpdateRequest,
     ChatRequest,
 )
@@ -17,6 +17,7 @@ from backend.ai_service import (
     merge_collected_fields,
 )
 from backend.questions import get_followup_questions
+from backend.safety import SAFETY_NOTICE, already_addressed, harm_intent
 from backend.triage import triage_complaint
 from backend.database import (
     save_complaint,
@@ -301,6 +302,13 @@ def chat_complaint(request: ChatRequest):
                 agent_message = next_question
             else:
                 agent_message = "Could you tell me a bit more about what happened?"
+
+            # Deterministic backstop: the LLM is asked to write its own safety
+            # sentence, but that alone isn't reliable. Only add the backstop notice
+            # when the agent's reply doesn't already show signs of addressing it,
+            # so a compliant LLM response isn't duplicated.
+            if harm_intent(request.user_message) and not already_addressed(agent_message):
+                agent_message = f"{SAFETY_NOTICE} {agent_message}"
 
             add_chat_message(request.session_id, "agent", agent_message, merged_fields)
 
