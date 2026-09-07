@@ -1,3 +1,5 @@
+ 
+
 <p align="center">
   <img src="docs/assets/readme-banner.svg" alt="Police Complaint AI Assistant" width="100%" />
 </p>
@@ -27,7 +29,7 @@ A full, beginner-friendly, line-by-line walkthrough of this entire codebase live
 ```mermaid
 flowchart LR
     Root["📦 Police Portal System"] 
-    
+  
     Root --> Backend["📁 backend/"]
     Root --> Frontend["📁 frontend/"]
     Root --> Uploads["📁 uploads/"]
@@ -50,7 +52,7 @@ flowchart LR
     classDef root fill:#0B1F3A,stroke:#0B1F3A,stroke-width:2px,color:#ffffff,font-weight:bold,rx:5px,ry:5px;
     classDef folder fill:#f1f5f9,stroke:#94a3b8,stroke-width:2px,color:#0f172a,font-weight:bold,rx:5px,ry:5px;
     classDef file fill:#ffffff,stroke:#cbd5e1,stroke-width:1px,color:#334155,rx:5px,ry:5px;
-    
+  
     class Root root;
     class Backend,Frontend,Uploads,F_SRC folder;
     class B1,B2,B3,B4,B5,B6,B7,F1,F2,F3,U1 file;
