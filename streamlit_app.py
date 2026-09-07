@@ -1,23 +1,50 @@
 import os
+import time
 
 import requests
 import streamlit as st
 
 
-API = os.getenv("API_URL", "http://localhost:8000")
+API = os.getenv("API_URL", "http://127.0.0.1:8000")
 PRIORITIES = ["All", "Emergency", "High", "Medium", "Low"]
 STATUSES = ["All", "New", "Under Review", "Assigned", "Resolved", "Closed"]
 
 
 def api(method, path, **kwargs):
-    try:
-        response = requests.request(method, API + path, timeout=45, **kwargs)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as exc:
-        detail = getattr(exc.response, "text", "") if exc.response else ""
-        st.error(detail[:180] or "Cannot connect to the backend.")
-        return None
+    global API
+    candidates = [API]
+    if "127.0.0.1" in API:
+        candidates.append(API.replace("127.0.0.1", "localhost"))
+    elif "localhost" in API:
+        candidates.append(API.replace("localhost", "127.0.0.1"))
+
+    last_exc = None
+    for attempt in range(2):
+        for target_base in candidates:
+            try:
+                response = requests.request(method, target_base + path, timeout=45, **kwargs)
+                response.raise_for_status()
+                API = target_base
+                return response.json()
+            except requests.RequestException as exc:
+                last_exc = exc
+                if exc.response is not None:
+                    break
+        if last_exc and last_exc.response is not None:
+            break
+        if attempt == 0:
+            time.sleep(0.5)
+
+    if last_exc:
+        detail = getattr(last_exc.response, "text", "") if last_exc.response else ""
+        if detail:
+            st.error(f"Backend error ({last_exc.response.status_code}): {detail[:180]}")
+        else:
+            st.error(
+                f"Cannot connect to the backend at {API}. "
+                "Please make sure the FastAPI server is running (`python3 -m uvicorn backend.main:app --port 8000`)."
+            )
+    return None
 
 
 def reset_intake():
@@ -38,16 +65,16 @@ def home():
     st.title("Police complaint assistant")
     st.write("Describe an incident naturally. The AI assistant gathers missing details, then rule-based triage sends the finalized complaint to the correct police queue.")
     st.info("For an active emergency or immediate danger, contact local emergency services now.", icon=":material/emergency:")
+    highlights = [
+        ("Guided filing", "Answer one clear question at a time and attach available evidence."),
+        ("Transparent triage", "Python rules assign priority, risk flags, and the responsible unit."),
+        ("Track progress", "Use the complaint ID to view the latest status."),
+    ]
     with st.container(horizontal=True):
-        with st.container(border=True):
-            st.subheader("Guided filing")
-            st.write("Answer one clear question at a time and attach available evidence.")
-        with st.container(border=True):
-            st.subheader("Transparent triage")
-            st.write("Python rules assign priority, risk flags, and the responsible unit.")
-        with st.container(border=True):
-            st.subheader("Track progress")
-            st.write("Use the complaint ID to view the latest status.")
+        for title, text in highlights:
+            with st.container(border=True):
+                st.subheader(title)
+                st.write(text)
 
 
 def file_complaint():
@@ -75,8 +102,8 @@ def file_complaint():
             st.write(message["content"])
 
     draft = st.session_state.draft
-    required = ("location", "incident_time", "injured", "money_lost", "evidence_available")
-    ready = bool(draft.get("complaint_text")) and all(draft.get(field) for field in required)
+    required = ("complaint_text", "location", "incident_time", "injured", "money_lost", "evidence_available")
+    ready = all(draft.get(field) for field in required)
 
     if ready:
         with st.container(border=True):

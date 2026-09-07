@@ -33,7 +33,7 @@ uvicorn backend.main:app --reload
 Start the frontend in another terminal:
 
 ```bash
-streamlit run frontend/streamlit_app.py
+streamlit run streamlit_app.py
 ```
 
 Open `http://localhost:8501`. API documentation is at `http://localhost:8000/docs`.
@@ -50,5 +50,5 @@ Open `http://localhost:8501`. API documentation is at `http://localhost:8000/doc
 ## Verify
 
 ```bash
-python -m py_compile backend/*.py frontend/streamlit_app.py
+python -m py_compile backend/*.py streamlit_app.py
 ```

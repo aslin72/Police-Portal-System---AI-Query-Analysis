@@ -34,7 +34,7 @@ def create_complaint(request: ComplaintRequest):
     )
     ai = analyze_complaint(context)
     ai["location"], ai["incident_time"] = request.location, request.incident_time
-    triage = triage_complaint(ai["category"], context)
+    triage = triage_complaint(ai["category"], request.complaint_text)
     complaint_id = save_complaint(payload, ai, triage, remaining_questions(payload))
     return get_complaint(complaint_id)
 

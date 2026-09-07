@@ -17,6 +17,11 @@ app.add_middleware(
 
 create_table()
 
+@app.get("/")
+def root():
+    return {"status": "ok", "service": "Police Complaint AI Assistant"}
+
+
 app.include_router(router)
 
 if __name__ == "__main__":
