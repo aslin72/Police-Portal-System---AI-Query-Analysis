@@ -1,3 +1,10 @@
+import re
+
+# Blank out any negated clause ("no weapons were drawn", "not injured", "zero rupees lost")
+# before keyword matching, instead of trying to enumerate every phrase that might negate a
+# risk keyword.
+NEGATED_CLAUSE = re.compile(r"\b(?:no|not|none|never|zero|nobody)\b[^.,;!?]*", re.IGNORECASE)
+
 UNIT_MAP = {
     "child safety": "Child Protection Desk",
     "cyber crime incident": "Cyber Crime Cell",
@@ -93,7 +100,7 @@ CATEGORY_KEYWORDS = {
 
 
 def triage_complaint(category, complaint_text, ai_result=None, evidence_count=0):
-    text = complaint_text.lower()
+    text = NEGATED_CLAUSE.sub(" ", complaint_text.lower())
 
     risk_flags = _detect_risk_flags(category, text, ai_result)
     priority = _determine_priority(category, text, ai_result, risk_flags)
