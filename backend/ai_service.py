@@ -119,7 +119,7 @@ def _build_openrouter_chain(prompt, temperature):
         llm = ChatOpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=key,
-            model="meta-llama/llama-3.3-70b-instruct:free",
+            model="nvidia/nemotron-3-super-120b-a12b:free",
             temperature=temperature,
             max_retries=0,
             timeout=20,
@@ -136,7 +136,7 @@ def _build_groq_chain(prompt, temperature):
         return None
     try:
         llm = ChatGroq(
-            model="llama-3.1-8b-instant",
+            model="openai/gpt-oss-20b",
             temperature=temperature,
             groq_api_key=key,
             max_retries=0,
@@ -249,14 +249,14 @@ _DETERMINISTIC_CATEGORY_RULES = [
             "hacked", "blackmailing", "blackmail", "phishing", "online fraud",
             "cyber fraud", "scam", "upi fraud", "fake profile",
             "fake profiles", "online stalking", "stalking me online",
-            "email", "personal photos", "identity theft",
+            "personal photos", "identity theft",
         ],
     ),
     (
         "women help desk",
         [
-            "domestic violence", "dowry", "husband", "wife", "stalking",
-            "harassing me", "harassment", "following me",
+            "domestic violence", "dowry", "stalking",
+            "harassing me", "following me",
             "sending threatening messages", "threatening messages",
             "abusing me", "beating me", "hitting me",
         ],
@@ -266,7 +266,7 @@ _DETERMINISTIC_CATEGORY_RULES = [
         [
             "food poisoning", "contaminated water", "unsafe food",
             "public water tank", "vomiting", "fever", "health outbreak",
-            "getting sick", "families are affected", "restaurant",
+            "getting sick", "families are affected",
             "medical negligence", "hospital complaint", "unsanitary",
         ],
     ),
@@ -375,6 +375,10 @@ Your task:
 4. Be friendly, professional, and empathetic. Use natural police-officer tone.
 
 5. NEVER reset or drop previously collected fields — always include ALL prior extracted data in the extracted_fields output, updated with any new values found.
+
+6. If the user's new message is a direct question to you (e.g. "can you freeze my account?", "should I go to hospital or the police station first?", "who are you?"), that question is NOT a fact about the incident — never copy it, in any form, into complaint_text. Answer or address it briefly in next_question instead, then continue with your normal follow-up question — never just ignore what they asked.
+
+7. If the user's new message expresses any wish to harm, punish, get revenge on, or "teach a lesson" to another person — however mild or offhand it sounds, not only explicit threats — do not help plan or engage with it. In next_question, say in one calm sentence that you can only record what happened to them, not arrange punishment, and to contact local emergency services if anyone is in immediate danger. Then continue gathering only the facts of what happened to them.
 
 Return ONLY a valid JSON object with no additional text:
 {{
@@ -641,7 +645,28 @@ def merge_collected_fields(prior_extracted, new_extracted, user_message):
             continue
         merged[field] = value
 
+    if merged.get("complaint_text"):
+        merged["complaint_text"] = _strip_echoed_question(merged["complaint_text"], user_message)
+
     return merged
+
+
+def _strip_echoed_question(text, user_message):
+    """Drop a trailing sentence that is essentially the citizen's own question to
+    the assistant, echoed back into the narrative despite being told not to --
+    that's never a fact about the incident. Only strips when the trailing
+    sentence closely matches what the citizen actually just said, so a genuine
+    quoted/rhetorical question that's part of the narrative itself (e.g. "he
+    kept asking why I didn't fight back?") is left alone."""
+    sentences = re.split(r"(?<=[.!?])\s+", _clean_text(text))
+    user_clean = _clean_text(user_message).lower().strip(" .!?")
+    while len(sentences) > 1 and sentences[-1].strip().endswith("?"):
+        trailing = sentences[-1].strip(" .!?").lower()
+        if user_clean and (trailing == user_clean or trailing in user_clean or user_clean in trailing):
+            sentences.pop()
+        else:
+            break
+    return _clean_text(" ".join(sentences))
 
 
 def choose_final_complaint_text(collected_text, raw_user_text):
